@@ -36,7 +36,7 @@ class MarketFilter:
         self.required_score_sideways = int(getattr(s, "REQUIRED_SCORE_SIDEWAYS", 75))
         
         # ✅ NOVO: Filtro de horário
-        self.weekend_multiplier = 0.5  # Reduz agressividade 50% no fim de semana
+        self.weekend_multiplier = 0.9  # Reduz agressividade apenas 10% no fim de semana
         
         logger.info("✅ Market Filter PROFISSIONAL v3.0 inicializado")
         logger.info(f"🚫 Pump threshold: +{self.pump_threshold}% em {self.pump_timeframe_hours}h | Dump threshold: -{self.dump_threshold}% em {self.dump_timeframe_hours}h")

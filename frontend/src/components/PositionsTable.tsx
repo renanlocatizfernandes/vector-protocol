@@ -1,5 +1,11 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { getPositionsDashboard, syncPositions, type DashboardData } from '../services/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { RefreshCw, Layers } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export const PositionsTable: React.FC = () => {
     const [data, setData] = useState<DashboardData | null>(null);
@@ -80,88 +86,94 @@ export const PositionsTable: React.FC = () => {
     const rows = agg ? aggRows : (data?.open_trades || []);
 
     return (
-        <div className="card">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Posições Abertas</h3>
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-primary" /> Posições Abertas
+                </CardTitle>
                 <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors">
                         <input
                             type="checkbox"
                             checked={agg}
                             onChange={e => setAgg(e.target.checked)}
-                            className="rounded border-gray-600 bg-gray-700 text-blue-500"
+                            className="rounded border-input bg-background text-primary focus:ring-primary"
                         />
                         Agrupar por Símbolo
                     </label>
                     <div className="flex gap-2">
-                        <button className="btn btn-secondary text-xs" onClick={() => handleSync(false)} disabled={loading}>
-                            Sync
-                        </button>
-                        <button className="btn btn-secondary text-xs" onClick={() => handleSync(true)} disabled={loading}>
-                            Sync (Strict)
-                        </button>
+                        <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={loading}>
+                            <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Sync
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleSync(true)} disabled={loading}>
+                            <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Sync (Strict)
+                        </Button>
                     </div>
                 </div>
-            </div>
+            </CardHeader>
+            <CardContent>
+                {message && (
+                    <div className={cn(
+                        "mb-4 p-2 rounded text-sm font-medium text-center",
+                        message.type === 'success' ? "bg-green-500/15 text-green-500" : "bg-red-500/15 text-red-500"
+                    )}>
+                        {message.text}
+                    </div>
+                )}
 
-            {message && (
-                <div className={`mb-4 p-2 rounded text-sm ${message.type === 'success' ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}`}>
-                    {message.text}
+                <div className="rounded-md border">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Símbolo</TableHead>
+                                <TableHead>Direção</TableHead>
+                                <TableHead>Entrada</TableHead>
+                                <TableHead>Qtd</TableHead>
+                                <TableHead>PNL (USDT)</TableHead>
+                                <TableHead>PNL %</TableHead>
+                                <TableHead>Aberto em</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {rows.length > 0 ? (
+                                rows.map((row: any) => (
+                                    <TableRow key={row.id}>
+                                        <TableCell className="font-mono font-bold">{row.symbol}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={row.direction === 'LONG' ? 'success' : 'destructive'}>
+                                                {row.direction}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="font-mono">{Number(row.entry_price).toFixed(4)}</TableCell>
+                                        <TableCell className="font-mono">{Number(row.quantity).toFixed(4)}</TableCell>
+                                        <TableCell className={cn("font-mono font-bold", row.pnl >= 0 ? 'text-green-500' : 'text-red-500')}>
+                                            {row.pnl ? row.pnl.toFixed(2) : '—'}
+                                        </TableCell>
+                                        <TableCell className={cn("font-mono", row.pnl_percentage >= 0 ? 'text-green-500' : 'text-red-500')}>
+                                            {row.pnl_percentage ? row.pnl_percentage.toFixed(2) : '—'}%
+                                        </TableCell>
+                                        <TableCell className="text-xs text-muted-foreground">
+                                            {row.opened_at ? new Date(row.opened_at).toLocaleString() : '—'}
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        Nenhuma posição aberta no momento.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
                 </div>
-            )}
 
-            <div className="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Símbolo</th>
-                            <th>Direção</th>
-                            <th>Entrada</th>
-                            <th>Qtd</th>
-                            <th>PNL (USDT)</th>
-                            <th>PNL %</th>
-                            <th>Aberto em</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.length > 0 ? (
-                            rows.map((row: any) => (
-                                <tr key={row.id}>
-                                    <td className="font-mono font-bold">{row.symbol}</td>
-                                    <td>
-                                        <span className={`badge ${row.direction === 'LONG' ? 'badge-success' : 'badge-danger'}`}>
-                                            {row.direction}
-                                        </span>
-                                    </td>
-                                    <td className="font-mono">{Number(row.entry_price).toFixed(4)}</td>
-                                    <td className="font-mono">{Number(row.quantity).toFixed(4)}</td>
-                                    <td className={`font-mono font-bold ${row.pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                                        {row.pnl ? row.pnl.toFixed(2) : '—'}
-                                    </td>
-                                    <td className={`font-mono ${row.pnl_percentage >= 0 ? 'text-success' : 'text-danger'}`}>
-                                        {row.pnl_percentage ? row.pnl_percentage.toFixed(2) : '—'}%
-                                    </td>
-                                    <td className="text-xs text-secondary">
-                                        {row.opened_at ? new Date(row.opened_at).toLocaleString() : '—'}
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={7} className="text-center py-8 text-secondary">
-                                    Nenhuma posição aberta no momento.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Footer Stats */}
-            <div className="mt-4 pt-4 border-t border-gray-700 flex gap-6 text-sm text-secondary">
-                <div>Exposição Total: <span className="text-primary font-mono">{data?.portfolio?.exposure_total || '0.00'}</span></div>
-                <div>Unrealized PnL: <span className={`font-mono ${data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-success' : 'text-danger'}`}>{data?.portfolio?.unrealized_pnl_total || '0.00'}</span></div>
-            </div>
-        </div>
+                {/* Footer Stats */}
+                <div className="mt-4 pt-4 border-t flex gap-6 text-sm text-muted-foreground">
+                    <div>Exposição Total: <span className="text-foreground font-mono">{data?.portfolio?.exposure_total || '0.00'}</span></div>
+                    <div>Unrealized PnL: <span className={cn("font-mono", data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-green-500' : 'text-red-500')}>{data?.portfolio?.unrealized_pnl_total || '0.00'}</span></div>
+                </div>
+            </CardContent>
+        </Card>
     );
 };

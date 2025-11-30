@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import axios from 'axios';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { TrendingUp } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -49,68 +52,71 @@ export const PerformanceChart: React.FC = () => {
         }
     };
 
-    if (loading) return <div className="animate-pulse h-64 bg-gray-800 rounded-lg"></div>;
+    if (loading) return <div className="animate-pulse h-64 bg-muted rounded-lg"></div>;
 
     if (data.length === 0) {
         return (
-            <div className="card h-full flex items-center justify-center text-secondary">
-                <p>Sem dados de histórico ainda.</p>
-            </div>
+            <Card className="h-full flex items-center justify-center text-muted-foreground">
+                <CardContent>
+                    <p>Sem dados de histórico ainda.</p>
+                </CardContent>
+            </Card>
         );
     }
 
     const isPositive = data.length > 0 && data[data.length - 1].cumulative >= 0;
 
     return (
-        <div className="card h-full flex flex-col">
-            <h2 className="text-lg font-semibold mb-4 flex items-center justify-between">
-                <span className="flex items-center gap-2"><span className="text-blue">📈</span> Performance (PnL Acumulado)</span>
-                <span className={`text-xl font-bold ${isPositive ? 'text-success' : 'text-danger'}`}>
+        <Card className="h-full flex flex-col">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-blue-500" /> Performance (PnL Acumulado)
+                </CardTitle>
+                <span className={cn("text-xl font-bold", isPositive ? "text-green-500" : "text-red-500")}>
                     ${data[data.length - 1].cumulative.toFixed(2)}
                 </span>
-            </h2>
-
-            <div className="flex-1 min-h-[300px]">
+            </CardHeader>
+            <CardContent className="flex-1 min-h-[300px] pt-4">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data}>
                         <defs>
                             <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={isPositive ? "#81c995" : "#f28b82"} stopOpacity={0.3} />
-                                <stop offset="95%" stopColor={isPositive ? "#81c995" : "#f28b82"} stopOpacity={0} />
+                                <stop offset="5%" stopColor={isPositive ? "#22c55e" : "#ef4444"} stopOpacity={0.3} />
+                                <stop offset="95%" stopColor={isPositive ? "#22c55e" : "#ef4444"} stopOpacity={0} />
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#3c4043" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                         <XAxis
                             dataKey="date"
-                            stroke="#9aa0a6"
+                            stroke="hsl(var(--muted-foreground))"
                             fontSize={12}
                             tickLine={false}
                             axisLine={false}
                         />
                         <YAxis
-                            stroke="#9aa0a6"
+                            stroke="hsl(var(--muted-foreground))"
                             fontSize={12}
                             tickLine={false}
                             axisLine={false}
                             tickFormatter={(value) => `$${value}`}
                         />
                         <Tooltip
-                            contentStyle={{ backgroundColor: '#292a2d', borderColor: '#3c4043', color: '#e8eaed' }}
-                            itemStyle={{ color: '#e8eaed' }}
+                            contentStyle={{ backgroundColor: 'hsl(var(--popover))', borderColor: 'hsl(var(--border))', color: 'hsl(var(--popover-foreground))' }}
+                            itemStyle={{ color: 'hsl(var(--foreground))' }}
                             formatter={(value: number) => [`$${value.toFixed(2)}`, 'Acumulado']}
-                            labelStyle={{ color: '#9aa0a6' }}
+                            labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
                         />
                         <Area
                             type="monotone"
                             dataKey="cumulative"
-                            stroke={isPositive ? "#81c995" : "#f28b82"}
+                            stroke={isPositive ? "#22c55e" : "#ef4444"}
                             strokeWidth={2}
                             fillOpacity={1}
                             fill="url(#colorPnl)"
                         />
                     </AreaChart>
                 </ResponsiveContainer>
-            </div>
-        </div>
+            </CardContent>
+        </Card>
     );
 };

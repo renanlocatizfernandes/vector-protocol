@@ -12,6 +12,11 @@ import {
 } from "../services/api";
 import DockerStatus from "../components/DockerStatus";
 import LogsViewer from "../components/LogsViewer";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Shield, Activity, Server, PlayCircle, StopCircle, RefreshCw, Terminal, Power } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function Supervisor() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -86,100 +91,136 @@ export default function Supervisor() {
   const supEnabled = !!sup?.enabled;
 
   return (
-    <div className="grid" style={{ gap: 16 }}>
+    <div className="space-y-6 animate-in fade-in duration-500">
       {/* HERO */}
-      <div className="hero" style={{ marginBottom: 8 }}>
+      <div className="flex items-center justify-between">
         <div>
-          <div className="hero-title">Supervisor</div>
-          <div className="hero-sub">
-            Automação para manter sua stack saudável e o bot sempre rodando.
-          </div>
-          <div className="row" style={{ marginTop: 10 }}>
-            <div className={"badge " + (apiHealthy ? "ok" : "warn")}>
-              <span className="dot" /> API: {health?.status || "—"}
-            </div>
-            <div className="badge info">v{health?.version || "—"}</div>
-            <div className={"badge " + (botRunning ? "ok" : "warn")}>
-              Bot: {botRunning ? "Rodando" : "Parado"}
-            </div>
-            <div className={"badge " + (supEnabled ? "ok" : "warn")}>
-              Supervisor: {supEnabled ? "Ativado" : "Desativado"}
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Supervisor</h1>
+          <p className="text-muted-foreground">Automação para manter sua stack saudável e o bot sempre rodando.</p>
         </div>
-
-        <div className="toolbar">
-          <button className="btn success" disabled={opBusy} onClick={() => setSupervisor("enable")}>Ativar</button>
-          <button className="btn destructive" disabled={opBusy} onClick={() => setSupervisor("disable")}>Desativar</button>
-          <button className="btn warn" disabled={opBusy} onClick={() => setSupervisor("toggle")}>Alternar</button>
-          <button className="btn ghost" disabled={supLoading} onClick={refreshSup}>Atualizar</button>
-          <a className="btn ghost" href="/docs" target="_blank" rel="noreferrer">Swagger</a>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={refreshSup} disabled={supLoading}>
+            <RefreshCw className={cn("mr-2 h-4 w-4", supLoading && "animate-spin")} /> Atualizar
+          </Button>
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noreferrer"
+            className={cn(buttonVariants("ghost", "sm"))}
+          >
+            Swagger API
+          </a>
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-4">
+        <Badge variant={apiHealthy ? "success" : "destructive"} className="px-3 py-1 text-sm">
+          API: {health?.status || "—"}
+        </Badge>
+        <Badge variant="outline" className="px-3 py-1 text-sm">
+          v{health?.version || "—"}
+        </Badge>
+        <Badge variant={botRunning ? "success" : "destructive"} className="px-3 py-1 text-sm">
+          Bot: {botRunning ? "Rodando" : "Parado"}
+        </Badge>
+        <Badge variant={supEnabled ? "success" : "destructive"} className="px-3 py-1 text-sm">
+          Supervisor: {supEnabled ? "Ativado" : "Desativado"}
+        </Badge>
+      </div>
+
+      <div className="flex gap-2">
+        <Button variant="default" className="bg-green-600 hover:bg-green-700" disabled={opBusy} onClick={() => setSupervisor("enable")}>
+          <PlayCircle className="mr-2 h-4 w-4" /> Ativar Supervisor
+        </Button>
+        <Button variant="destructive" disabled={opBusy} onClick={() => setSupervisor("disable")}>
+          <StopCircle className="mr-2 h-4 w-4" /> Desativar Supervisor
+        </Button>
+        <Button variant="secondary" disabled={opBusy} onClick={() => setSupervisor("toggle")}>
+          <Power className="mr-2 h-4 w-4" /> Alternar
+        </Button>
+      </div>
+
       {/* RESUMO RÁPIDO */}
-      <div className="grid cols-2">
-        <section className="card">
-          <h3>Resumo</h3>
-          {loading ? (
-            <div className="small">Carregando...</div>
-          ) : (
-            <>
-              <div className="row">
-                <div className={"badge " + (apiHealthy ? "ok" : "warn")}>
-                  API: {health?.status || "—"}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5" /> Resumo do Sistema
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="text-sm text-muted-foreground">Carregando...</div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant={apiHealthy ? "success" : "destructive"}>
+                    API: {health?.status || "—"}
+                  </Badge>
+                  <Badge variant="outline">v{health?.version || "—"}</Badge>
+                  <Badge variant={botRunning ? "success" : "destructive"}>
+                    Bot: {botRunning ? "Rodando" : "Parado"}
+                  </Badge>
                 </div>
-                <div className="badge">v{health?.version || "—"}</div>
-                <div className={"badge " + (botRunning ? "ok" : "warn")}>
-                  Bot: {botRunning ? "Rodando" : "Parado"}
+                <div className="text-sm text-muted-foreground">
+                  Módulos: {health?.modules ? Object.keys(health.modules).join(", ") : "—"}
                 </div>
               </div>
-              <div className="small" style={{ marginTop: 8 }}>
-                Módulos: {health?.modules ? Object.keys(health.modules).join(", ") : "—"}
-              </div>
-            </>
-          )}
-        </section>
+            )}
+          </CardContent>
+        </Card>
 
-        <section className="card">
-          <h3>Supervisor • Detalhes</h3>
-          <div className="row">
-            <div className={"badge " + (supEnabled ? "ok" : "warn")}>
-              Status: {supEnabled ? "Ativado" : "Desativado"}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" /> Supervisor • Detalhes
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Badge variant={supEnabled ? "success" : "destructive"}>
+                Status: {supEnabled ? "Ativado" : "Desativado"}
+              </Badge>
             </div>
-            <button className="btn ghost" disabled={supLoading} onClick={refreshSup}>Atualizar</button>
-          </div>
-          <div className="small" style={{ marginTop: 8 }}>
-            Última intervenção: {fmtDate(sup?.last_intervention_at)}
-          </div>
-          <details style={{ marginTop: 8 }}>
-            <summary>Últimas intervenções</summary>
-            <pre
-              className="small"
-              style={{ whiteSpace: "pre-wrap", maxHeight: 220, overflow: "auto" }}
-            >
-{(sup?.interventions_tail || []).join("\n") || "—"}
-            </pre>
-          </details>
-        </section>
+            <div className="text-sm text-muted-foreground">
+              Última intervenção: {fmtDate(sup?.last_intervention_at)}
+            </div>
+            <details className="text-sm">
+              <summary className="cursor-pointer text-primary hover:underline">Últimas intervenções</summary>
+              <pre className="mt-2 p-2 bg-muted rounded-md text-xs font-mono overflow-auto max-h-40">
+                {(sup?.interventions_tail || []).join("\n") || "—"}
+              </pre>
+            </details>
+          </CardContent>
+        </Card>
 
-        <section className="card">
-          <h3>Quando usar o Supervisor?</h3>
-          <ul className="small">
-            <li>Manter a API saudável automaticamente (auto-fix para falhas comuns).</li>
-            <li>Garantir que o bot permaneça rodando (ensure-running).</li>
-            <li>Intervir em inatividade (reinicia bot/serviço).</li>
-          </ul>
-          <p className="small">
-            Se preferir controle manual via UI, mantenha o Supervisor desligado. Para automação e
-            resiliência, rode o Supervisor com <code>watch</code>.
-          </p>
-        </section>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Quando usar o Supervisor?</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground space-y-2">
+            <ul className="list-disc list-inside space-y-1">
+              <li>Manter a API saudável automaticamente (auto-fix para falhas comuns).</li>
+              <li>Garantir que o bot permaneça rodando (ensure-running).</li>
+              <li>Intervir em inatividade (reinicia bot/serviço).</li>
+            </ul>
+            <p>
+              Se preferir controle manual via UI, mantenha o Supervisor desligado. Para automação e
+              resiliência, rode o Supervisor com <code>watch</code>.
+            </p>
+          </CardContent>
+        </Card>
 
-        <section className="card">
-          <h3>Comandos Úteis</h3>
-          <p className="small">Execute no diretório raiz do projeto:</p>
-          <pre className="small" style={{ whiteSpace: "pre-wrap" }}>{`# Preparar ambiente local (opcional)
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Terminal className="h-4 w-4" /> Comandos Úteis
+            </CardTitle>
+            <CardDescription>Execute no diretório raiz do projeto</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <pre className="text-xs font-mono bg-muted p-3 rounded-md overflow-x-auto whitespace-pre-wrap text-foreground">
+              {`# Preparar ambiente local (opcional)
 python3 supervisor.py ensure-venv
 
 # Subir stack Docker e checar saúde
@@ -200,46 +241,65 @@ python3 supervisor.py logs --name trading-bot-api --tail 200
 python3 supervisor.py restart-api --service api
 
 # Parar stack
-python3 supervisor.py down`}</pre>
+python3 supervisor.py down`}
+            </pre>
+            <div className="mt-4">
+              <h4 className="text-sm font-semibold mb-2">Notas de Operação</h4>
+              <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
+                <li><b>--ensure-running</b> liga o “auto-start” caso o bot pare.</li>
+                <li><b>--bot-dry-run</b> força iniciar em modo simulado nas intervenções.</li>
+                <li><b>--inactive-mins</b> reinicia o bot se não houver atividade por X minutos.</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          <h4 style={{ margin: "16px 0 8px 0" }}>Notas de Operação</h4>
-          <ul className="small">
-            <li><b>--ensure-running</b> liga o “auto-start” caso o bot pare.</li>
-            <li><b>--bot-dry-run</b> força iniciar em modo simulado nas intervenções.</li>
-            <li><b>--inactive-mins</b> reinicia o bot se não houver atividade por X minutos.</li>
-          </ul>
-        </section>
+      <div className="grid grid-cols-1 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="h-5 w-5" /> Infra • Containers e Logs
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <DockerStatus />
+              <LogsViewer />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        <section className="card" style={{ gridColumn: "1 / -1" }}>
-          <h3>Infra • Containers e Logs</h3>
-          <div className="grid cols-2">
-            <DockerStatus />
-            <LogsViewer />
-          </div>
-        </section>
-
-        <section className="card" style={{ gridColumn: "1 / -1" }}>
-          <h3>Cenários recomendados</h3>
-          <div className="grid cols-2">
-            <div className="card">
-              <h4 style={{ marginTop: 0 }}>Supervisor DESLIGADO</h4>
-              <ul className="small">
+      <Card>
+        <CardHeader>
+          <CardTitle>Cenários recomendados</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <StopCircle className="h-4 w-4 text-red-500" /> Supervisor DESLIGADO
+              </h4>
+              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                 <li>Uso exploratório e controle total pela UI.</li>
                 <li>Start/Stop via painel, ajustes de config por demanda.</li>
                 <li>Requer atenção manual em quedas/erros.</li>
               </ul>
             </div>
-            <div className="card">
-              <h4 style={{ marginTop: 0 }}>Supervisor LIGADO</h4>
-              <ul className="small">
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                <PlayCircle className="h-4 w-4 text-green-500" /> Supervisor LIGADO
+              </h4>
+              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
                 <li>Ambiente always-on, com auto-fix e auto-start do bot.</li>
                 <li>Mitiga falhas transitórias, reinicia serviços quando necessário.</li>
                 <li>UI permanece para inspeção e ajustes finos de parâmetros.</li>
               </ul>
             </div>
           </div>
-        </section>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

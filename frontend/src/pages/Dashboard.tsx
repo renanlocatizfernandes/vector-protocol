@@ -6,21 +6,18 @@ import { PositionsTable } from '../components/PositionsTable';
 
 export const Dashboard: React.FC = () => {
   return (
-    <div className="container py-8">
-      <header className="mb-8 flex items-center justify-between">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-blue-400 flex items-center gap-3">
-            Crypto Bot
-            <span className="text-xs bg-blue-900/30 text-blue-300 px-2 py-1 rounded border border-blue-900/50">PRO v4.0</span>
-          </h1>
-          <p className="text-secondary mt-1">Painel de Controle & Performance</p>
+          <h1 className="text-3xl font-bold tracking-tight text-primary">Dashboard</h1>
+          <p className="text-muted-foreground">Painel de controle e monitoramento em tempo real.</p>
         </div>
-        <div className="flex gap-4">
-          {/* Future: Notifications or User Profile */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded border border-primary/20 font-mono">PRO v4.0</span>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna Esquerda: Status e Manual */}
         <div className="flex flex-col gap-6">
           <BotStatus />
@@ -34,7 +31,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* Posições (Full Width) */}
-      <div className="mb-8">
+      <div>
         <PositionsTable />
       </div>
     </div>

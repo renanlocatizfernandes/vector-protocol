@@ -25,11 +25,11 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
     
     # Bot Settings
-    MAX_POSITIONS: int = 15  # ← Padrão
+    MAX_POSITIONS: int = 20  # ← Aumentado para 20
     RISK_PER_TRADE: float = 0.02
-    MAX_PORTFOLIO_RISK: float = 0.30
-    DEFAULT_LEVERAGE: int = 3
-    SCANNER_MAX_SYMBOLS: int = 200 # Aumentado para buscar mais símbolos
+    MAX_PORTFOLIO_RISK: float = 0.40 # Aumentado para 40%
+    DEFAULT_LEVERAGE: int = 5 # Aumentado para 5x
+    SCANNER_MAX_SYMBOLS: int = 300 # Aumentado para buscar mais símbolos
 
     # Risco e spread (afinamento fino)
     SNIPER_RISK_PER_TRADE: float = 0.01       # Risco por trade sniper (fração, ex.: 0.01 = 1%)
@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     TAKER_RATIO_SHORT_MAX: float = 0.98          # Requisito máximo para SHORT (predomínio de takers short)
     
     # Market Scanner (cobertura de universo)
-    SCANNER_TOP_N: int = 600                     # Top-N por volume (quoteVolume) para priorização
+    SCANNER_TOP_N: int = 800                     # Top-N por volume (quoteVolume) para priorização
     SCANNER_MAX_SYMBOLS: int = 160               # Limite de símbolos processados por ciclo (performance)
     SCANNER_TESTNET_STRICT_WHITELIST: bool = False # Se True, restringe ao whitelist no TESTNET
     MIN_QUOTE_VOLUME_USDT_24H: float = 1_000_000.0   # Liquidez mínima 24h reduzida para 1M (Sniper Mode)
@@ -99,14 +99,14 @@ class Settings(BaseSettings):
     TIME_EXIT_MIN_PROFIT_PCT: float = 0.5  # And profit < 0.5% (stagnant)
     
     # Legacy settings (maintained for compatibility)
-    PROD_MIN_SCORE: int = 50  # Reduzido para 50 (Aggressive Mode para gerar mais sinais)
-    PROD_VOLUME_THRESHOLD: float = 0.3  # Reduzido para 0.3 (Permitir moedas com menos volume relativo)
-    PROD_RSI_OVERSOLD: int = 30
-    PROD_RSI_OVERBOUGHT: int = 70
-    REQUIRE_TREND_CONFIRMATION: bool = True
-    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.3  # Mais exigente no momentum
-    RR_MIN_TREND: float = 1.5  # R:R mínimo maior para trend
-    RR_MIN_RANGE: float = 2.0  # R:R mínimo maior para range
+    PROD_MIN_SCORE: int = 40  # Reduzido para 40 (Super Aggressive)
+    PROD_VOLUME_THRESHOLD: float = 0.1  # Reduzido para 0.1
+    PROD_RSI_OVERSOLD: int = 35 # Relaxado
+    PROD_RSI_OVERBOUGHT: int = 65 # Relaxado
+    REQUIRE_TREND_CONFIRMATION: bool = False # Desativado
+    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.1  # Mínimo momentum
+    RR_MIN_TREND: float = 1.1  # R:R mínimo agressivo
+    RR_MIN_RANGE: float = 1.2  # R:R mínimo agressivo
 
     # Correlação
     CORR_WINDOW_DAYS: int = 14
@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     DUMP_THRESHOLD_PCT: float = 30.0 # Aumentado para ser menos restritivo
     DUMP_TIMEFRAME_HOURS: int = 2
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    REQUIRED_SCORE_SIDEWAYS: int = 80  # Mais exigente em lateralidade
+    REQUIRED_SCORE_SIDEWAYS: int = 50  # Relaxado para 50
 
     # Risco adicional
     DAILY_MAX_LOSS_PCT: float = 0.05
@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     
     # ADX Trend Strength Filter
     ENABLE_ADX_FILTER: bool = True
-    ADX_MIN_TREND_STRENGTH: float = 25.0  # Minimum ADX to consider trend strong enough
+    ADX_MIN_TREND_STRENGTH: float = 15.0  # Minimum ADX to consider trend strong enough
     
     # Auto-start do Bot
     AUTOSTART_BOT: bool = True

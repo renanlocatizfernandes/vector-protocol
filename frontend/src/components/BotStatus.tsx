@@ -1,5 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { getBotStatus, getDailyStats, startBot, stopBot, updateBotConfig, type BotStatus as IBotStatus, type DailyStats } from '../services/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Play, Square, Settings, RefreshCw, Activity, DollarSign } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export const BotStatus: React.FC = () => {
     const [bot, setBot] = useState<IBotStatus | null>(null);
@@ -89,87 +94,109 @@ export const BotStatus: React.FC = () => {
     const isRunning = !!bot?.running;
 
     return (
-        <div className="card flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <span className="text-blue">🤖</span> Status do Bot
-                </h2>
-                <span className={`badge ${isRunning ? 'badge-success' : 'badge-warning'}`}>
-                    <span className={`w-2 h-2 rounded-full mr-2 ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></span>
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Status do Bot</CardTitle>
+                <Badge variant={isRunning ? "success" : "destructive"} className="flex gap-1 items-center">
+                    <div className={cn("h-2 w-2 rounded-full", isRunning ? "bg-green-500 animate-pulse" : "bg-red-500")} />
                     {isRunning ? 'RODANDO' : 'PARADO'}
-                </span>
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-tertiary p-3 rounded">
-                    <div className="text-secondary text-xs uppercase">P&L Diário</div>
-                    <div className={`text-lg font-bold ${daily && daily.total_pnl >= 0 ? 'text-success' : 'text-danger'}`}>
-                        ${daily ? daily.total_pnl.toFixed(2) : '—'}
+                </Badge>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div className="flex flex-col space-y-1">
+                        <span className="text-xs text-muted-foreground uppercase flex items-center gap-1">
+                            <DollarSign className="h-3 w-3" /> P&L Diário
+                        </span>
+                        <span className={cn("text-2xl font-bold", daily && daily.total_pnl >= 0 ? "text-green-500" : "text-red-500")}>
+                            ${daily ? daily.total_pnl.toFixed(2) : '—'}
+                        </span>
+                    </div>
+                    <div className="flex flex-col space-y-1">
+                        <span className="text-xs text-muted-foreground uppercase flex items-center gap-1">
+                            <Activity className="h-3 w-3" /> Win Rate
+                        </span>
+                        <span className="text-2xl font-bold text-blue-500">
+                            {daily ? daily.win_rate.toFixed(1) : '—'}%
+                        </span>
                     </div>
                 </div>
-                <div className="bg-tertiary p-3 rounded">
-                    <div className="text-secondary text-xs uppercase">Win Rate</div>
-                    <div className="text-lg font-bold text-blue">
-                        {daily ? daily.win_rate.toFixed(1) : '—'}%
-                    </div>
-                </div>
-            </div>
 
-            {/* Controls */}
-            <div className="flex gap-2 mt-2">
-                {!isRunning ? (
-                    <>
-                        <button className="btn btn-primary flex-1" onClick={() => handleStart(false)} disabled={loading}>
-                            Start Real
-                        </button>
-                        <button className="btn btn-secondary flex-1" onClick={() => handleStart(true)} disabled={loading}>
-                            Dry Run
-                        </button>
-                    </>
-                ) : (
-                    <button className="btn btn-danger flex-1" onClick={handleStop} disabled={loading}>
-                        Stop Bot
-                    </button>
+                <div className="flex gap-2 mb-4">
+                    {!isRunning ? (
+                        <>
+                            <Button className="flex-1" onClick={() => handleStart(false)} disabled={loading}>
+                                <Play className="mr-2 h-4 w-4" /> Start Real
+                            </Button>
+                            <Button variant="secondary" className="flex-1" onClick={() => handleStart(true)} disabled={loading}>
+                                <Play className="mr-2 h-4 w-4" /> Dry Run
+                            </Button>
+                        </>
+                    ) : (
+                        <Button variant="destructive" className="flex-1" onClick={handleStop} disabled={loading}>
+                            <Square className="mr-2 h-4 w-4 fill-current" /> Stop Bot
+                        </Button>
+                    )}
+                </div>
+
+                <div className="relative">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-xs text-muted-foreground"
+                        onClick={() => setShowConfig(!showConfig)}
+                    >
+                        <Settings className="mr-2 h-3 w-3" />
+                        {showConfig ? 'Ocultar Configurações' : 'Configurações Rápidas'}
+                    </Button>
+
+                    {showConfig && (
+                        <div className="mt-4 space-y-4 border-t pt-4 animate-in slide-in-from-top-2">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium">Scan (min)</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={scanInterval}
+                                        onChange={e => setScanInterval(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium">Min Score</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={minScore}
+                                        onChange={e => setMinScore(e.target.value)}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium">Max Pos</label>
+                                    <input
+                                        type="number"
+                                        className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={maxPositions}
+                                        onChange={e => setMaxPositions(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <Button size="sm" variant="secondary" className="w-full" onClick={handleUpdateConfig} disabled={loading}>
+                                <RefreshCw className="mr-2 h-3 w-3" /> Salvar Alterações
+                            </Button>
+                        </div>
+                    )}
+                </div>
+
+                {message && (
+                    <div className={cn(
+                        "mt-4 p-2 rounded text-xs text-center font-medium",
+                        message.type === 'success' ? "bg-green-500/15 text-green-500" : "bg-red-500/15 text-red-500"
+                    )}>
+                        {message.text}
+                    </div>
                 )}
-            </div>
-
-            {/* Config Toggle */}
-            <button
-                className="text-xs text-secondary hover:text-primary text-center mt-2 underline"
-                onClick={() => setShowConfig(!showConfig)}
-            >
-                {showConfig ? 'Ocultar Configurações' : 'Mostrar Configurações'}
-            </button>
-
-            {/* Config Form */}
-            {showConfig && (
-                <div className="bg-tertiary p-3 rounded mt-2 flex flex-col gap-3 animate-fade-in">
-                    <div className="grid grid-cols-3 gap-2">
-                        <div>
-                            <label className="label">Scan (min)</label>
-                            <input type="number" className="input p-1 text-sm" value={scanInterval} onChange={e => setScanInterval(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className="label">Min Score</label>
-                            <input type="number" className="input p-1 text-sm" value={minScore} onChange={e => setMinScore(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className="label">Max Pos</label>
-                            <input type="number" className="input p-1 text-sm" value={maxPositions} onChange={e => setMaxPositions(e.target.value)} />
-                        </div>
-                    </div>
-                    <button className="btn btn-secondary text-xs w-full" onClick={handleUpdateConfig} disabled={loading}>
-                        Salvar Alterações
-                    </button>
-                </div>
-            )}
-
-            {message && (
-                <div className={`p-2 rounded text-xs text-center ${message.type === 'success' ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}`}>
-                    {message.text}
-                </div>
-            )}
-        </div>
+            </CardContent>
+        </Card>
     );
 };

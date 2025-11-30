@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Zap, TrendingUp, TrendingDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -43,120 +48,128 @@ export const ManualTrade: React.FC = () => {
     };
 
     return (
-        <div className="card">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <span className="text-blue">⚡</span> Trade Manual
-            </h2>
-
-            <form onSubmit={handleTrade} className="flex flex-col gap-4">
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="label">Símbolo</label>
-                        <input
-                            type="text"
-                            className="input font-mono uppercase"
-                            value={symbol}
-                            onChange={(e) => setSymbol(e.target.value)}
-                            placeholder="BTCUSDT"
-                            required
-                        />
-                    </div>
-                    <div>
-                        <label className="label">Alavancagem</label>
-                        <input
-                            type="number"
-                            className="input"
-                            value={leverage}
-                            onChange={(e) => setLeverage(e.target.value)}
-                            min="1"
-                            max="125"
-                            required
-                        />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div>
-                        <label className="label">Direção</label>
-                        <div className="flex gap-2">
-                            <button
-                                type="button"
-                                className={`btn flex-1 ${direction === 'LONG' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => setDirection('LONG')}
-                                style={{ backgroundColor: direction === 'LONG' ? 'var(--accent-success)' : '', color: direction === 'LONG' ? '#202124' : '' }}
-                            >
-                                LONG
-                            </button>
-                            <button
-                                type="button"
-                                className={`btn flex-1 ${direction === 'SHORT' ? 'btn-primary' : 'btn-secondary'}`}
-                                onClick={() => setDirection('SHORT')}
-                                style={{ backgroundColor: direction === 'SHORT' ? 'var(--accent-danger)' : '', color: direction === 'SHORT' ? '#202124' : '' }}
-                            >
-                                SHORT
-                            </button>
+        <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-yellow-500" /> Trade Manual
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleTrade} className="flex flex-col gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium">Símbolo</label>
+                            <Input
+                                type="text"
+                                className="font-mono uppercase"
+                                value={symbol}
+                                onChange={(e) => setSymbol(e.target.value)}
+                                placeholder="BTCUSDT"
+                                required
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium">Alavancagem</label>
+                            <Input
+                                type="number"
+                                value={leverage}
+                                onChange={(e) => setLeverage(e.target.value)}
+                                min="1"
+                                max="125"
+                                required
+                            />
                         </div>
                     </div>
-                    <div>
-                        <label className="label">Quantidade / Valor</label>
-                        <input
-                            type="number"
-                            className="input"
-                            value={amount}
-                            onChange={(e) => setAmount(e.target.value)}
-                            step="0.0001"
-                            required
-                        />
-                    </div>
-                </div>
 
-                {/* Amount Type Selector */}
-                <div>
-                    <label className="label mb-2">Tipo de Valor</label>
-                    <div className="flex bg-tertiary rounded p-1 gap-1">
-                        <button
-                            type="button"
-                            className={`flex-1 py-1 px-2 rounded text-xs transition-colors ${amountType === 'quantity' ? 'bg-blue-600 text-white' : 'text-secondary hover:text-primary'}`}
-                            onClick={() => setAmountType('quantity')}
-                        >
-                            Qtd (Moeda)
-                        </button>
-                        <button
-                            type="button"
-                            className={`flex-1 py-1 px-2 rounded text-xs transition-colors ${amountType === 'usdt_total' ? 'bg-blue-600 text-white' : 'text-secondary hover:text-primary'}`}
-                            onClick={() => setAmountType('usdt_total')}
-                        >
-                            Total USDT
-                        </button>
-                        <button
-                            type="button"
-                            className={`flex-1 py-1 px-2 rounded text-xs transition-colors ${amountType === 'usdt_margin' ? 'bg-blue-600 text-white' : 'text-secondary hover:text-primary'}`}
-                            onClick={() => setAmountType('usdt_margin')}
-                        >
-                            Margem USDT
-                        </button>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium">Direção</label>
+                            <div className="flex gap-2">
+                                <Button
+                                    type="button"
+                                    variant={direction === 'LONG' ? 'default' : 'outline'}
+                                    className={cn("flex-1", direction === 'LONG' && "bg-green-600 hover:bg-green-700")}
+                                    onClick={() => setDirection('LONG')}
+                                >
+                                    <TrendingUp className="mr-2 h-4 w-4" /> LONG
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant={direction === 'SHORT' ? 'destructive' : 'outline'}
+                                    className="flex-1"
+                                    onClick={() => setDirection('SHORT')}
+                                >
+                                    <TrendingDown className="mr-2 h-4 w-4" /> SHORT
+                                </Button>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-xs font-medium">Quantidade</label>
+                            <Input
+                                type="number"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                step="0.0001"
+                                required
+                            />
+                        </div>
                     </div>
-                    <div className="text-xs text-secondary mt-1 text-center">
-                        {amountType === 'quantity' && `Ex: 0.001 BTC`}
-                        {amountType === 'usdt_total' && `Ex: $1000 (Posição Total)`}
-                        {amountType === 'usdt_margin' && `Ex: $100 (Custo da Margem)`}
-                    </div>
-                </div>
 
-                <button
-                    type="submit"
-                    className="btn btn-primary w-full mt-2"
-                    disabled={loading}
-                >
-                    {loading ? 'Executando...' : '🚀 Executar Ordem'}
-                </button>
-
-                {message && (
-                    <div className={`p-3 rounded text-sm ${message.type === 'success' ? 'bg-green-900/20 text-green-400' : 'bg-red-900/20 text-red-400'}`}>
-                        {message.text}
+                    <div className="space-y-2">
+                        <label className="text-xs font-medium">Tipo de Valor</label>
+                        <div className="flex bg-muted rounded-md p-1 gap-1">
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex-1 py-1 px-2 rounded-sm text-xs transition-all",
+                                    amountType === 'quantity' ? "bg-background shadow-sm text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={() => setAmountType('quantity')}
+                            >
+                                Qtd (Moeda)
+                            </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex-1 py-1 px-2 rounded-sm text-xs transition-all",
+                                    amountType === 'usdt_total' ? "bg-background shadow-sm text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={() => setAmountType('usdt_total')}
+                            >
+                                Total USDT
+                            </button>
+                            <button
+                                type="button"
+                                className={cn(
+                                    "flex-1 py-1 px-2 rounded-sm text-xs transition-all",
+                                    amountType === 'usdt_margin' ? "bg-background shadow-sm text-foreground font-medium" : "text-muted-foreground hover:text-foreground"
+                                )}
+                                onClick={() => setAmountType('usdt_margin')}
+                            >
+                                Margem USDT
+                            </button>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground text-center h-4">
+                            {amountType === 'quantity' && `Ex: 0.001 BTC`}
+                            {amountType === 'usdt_total' && `Ex: $1000 (Posição Total)`}
+                            {amountType === 'usdt_margin' && `Ex: $100 (Custo da Margem)`}
+                        </div>
                     </div>
-                )}
-            </form>
-        </div>
+
+                    <Button type="submit" disabled={loading} className="w-full">
+                        {loading ? 'Executando...' : '🚀 Executar Ordem'}
+                    </Button>
+
+                    {message && (
+                        <div className={cn(
+                            "p-3 rounded-md text-xs text-center font-medium",
+                            message.type === 'success' ? "bg-green-500/15 text-green-500" : "bg-red-500/15 text-red-500"
+                        )}>
+                            {message.text}
+                        </div>
+                    )}
+                </form>
+            </CardContent>
+        </Card>
     );
 };
