@@ -1,0 +1,380 @@
+# backend/api/app.py
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from models.database import engine, Base, SessionLocal
+from api.models import trades
+from api.routes import positions, config, market, trading, system
+from api import backtesting
+from utils.logger import setup_logger
+from config.settings import get_settings
+from sqlalchemy import text
+from pathlib import Path
+import asyncio
+import redis
+
+# Setup logger
+logger = setup_logger("api")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: criar tabelas
+    logger.info("Criando tabelas do banco de dados...")
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ Tabelas criadas com sucesso!")
+    except Exception as e:
+        logger.error(f"❌ Erro ao criar tabelas: {e}")
+    
+    # Iniciar sincronização automática de posições (se habilitada)
+    try:
+        settings = get_settings()
+        if getattr(settings, "POSITIONS_AUTO_SYNC_ENABLED", False):
+            interval_s = max(60, int(getattr(settings, "POSITIONS_AUTO_SYNC_MINUTES", 10)) * 60)
+
+            async def _auto_sync_loop():
+                from api.routes.positions import reconcile_positions
+                while True:
+                    try:
+                        strict_default = bool(getattr(settings, "POSITIONS_AUTO_SYNC_STRICT", False))
+                        db = SessionLocal()
+                        try:
+                            await reconcile_positions(db, strict=strict_default)
+                        finally:
+                            db.close()
+                    except Exception as e:
+                        logger.error(f"Auto-sync error: {e}")
+                    await asyncio.sleep(interval_s)
+
+            app.state.auto_sync_task = asyncio.create_task(_auto_sync_loop())
+            logger.info(f"🟢 Auto-sync de posições iniciado (intervalo={interval_s}s)")
+    except Exception as e:
+        logger.error(f"Falha ao iniciar auto-sync: {e}")
+
+    # Auto-start do bot se habilitado nas settings (sem parar containers)
+    try:
+        settings = get_settings()
+        if getattr(settings, "AUTOSTART_BOT", False):
+            from modules.autonomous_bot import autonomous_bot
+
+            # Aplicar configurações BOT_* antes de iniciar
+            try:
+                autonomous_bot.min_score = int(getattr(settings, "BOT_MIN_SCORE", 0))
+            except Exception:
+                pass
+            try:
+                si = int(getattr(settings, "BOT_SCAN_INTERVAL_MINUTES", 1))
+                autonomous_bot.scan_interval = max(10, si * 60)
+            except Exception:
+                pass
+            try:
+                # Forçando max_positions para 15 para depuração
+                autonomous_bot.max_positions = 15
+                if hasattr(autonomous_bot, "base_max_positions"):
+                    autonomous_bot.base_max_positions = 15
+            except Exception:
+                pass
+
+            try:
+                await autonomous_bot.start(dry_run=bool(getattr(settings, "BOT_DRY_RUN", False)))
+                logger.info("🟢 Autostart BOT: iniciado")
+            except Exception as e:
+                logger.error(f"Falha ao iniciar BOT no autostart: {e}")
+    except Exception as e:
+        logger.error(f"Falha ao configurar autostart: {e}")
+
+    # Watchdog do BOT: mantém o bot rodando quando habilitado (supervisor flag + settings)
+    try:
+        settings = get_settings()
+        if getattr(settings, "AUTOSTART_BOT", False):
+            supervisor_flag = Path("/logs/supervisor_enabled.flag")
+
+            async def _bot_watchdog_loop():
+                last_restart_ts = 0.0
+                while True:
+                    try:
+                        # Supervisor pode desabilitar temporariamente
+                        enabled = True
+                        try:
+                            if supervisor_flag.exists():
+                                val = supervisor_flag.read_text(encoding="utf-8").strip()
+                                enabled = val != "0"
+                        except Exception:
+                            enabled = True
+
+                        if enabled:
+                            from modules.autonomous_bot import autonomous_bot
+                            if not autonomous_bot.running:
+                                now = asyncio.get_event_loop().time()
+                                # evitar reinícios muito frequentes
+                                if now - last_restart_ts > 15.0:
+                                    logger.info("🟢 Watchdog: bot não está rodando — iniciando...")
+                                    try:
+                                        await autonomous_bot.start(dry_run=bool(getattr(settings, "BOT_DRY_RUN", False)))
+                                        last_restart_ts = now
+                                    except Exception as e:
+                                        logger.error(f"Watchdog: falha ao iniciar bot: {e}")
+                        # checar a cada 10s
+                        await asyncio.sleep(10)
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.error(f"Watchdog loop erro: {e}")
+                        await asyncio.sleep(10)
+
+            app.state.bot_watchdog_task = asyncio.create_task(_bot_watchdog_loop())
+            logger.info("🟢 Bot Watchdog iniciado")
+    except Exception as e:
+        logger.error(f"Falha ao iniciar watchdog do bot: {e}")
+
+    yield
+    
+    # Shutdown
+    try:
+        task = getattr(app.state, "auto_sync_task", None)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except Exception:
+                pass
+            logger.info("🟡 Auto-sync de posições cancelado")
+    except Exception as e:
+        logger.error(f"Falha ao desligar auto-sync: {e}")
+
+    try:
+        wtask = getattr(app.state, "bot_watchdog_task", None)
+        if wtask:
+            wtask.cancel()
+            try:
+                await wtask
+            except Exception:
+                pass
+            logger.info("🟡 Bot Watchdog cancelado")
+    except Exception as e:
+        logger.error(f"Falha ao desligar watchdog: {e}")
+
+    logger.info("🔴 Encerrando aplicação...")
+
+
+app = FastAPI(
+    title="Crypto Trading Bot API",
+    description="API para gestão do bot de trading autônomo com backtesting",
+    version="1.1.0",  # ← ATUALIZAR versão
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ✅ Rotas existentes
+app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
+app.include_router(config.router, prefix="/api/config", tags=["Config"])
+app.include_router(market.router, prefix="/api/market", tags=["Market"])
+app.include_router(trading.router, prefix="/api/trading", tags=["Trading"])
+
+# ✅ NOVA: Rota de backtesting
+app.include_router(backtesting.router, prefix="/api/backtest", tags=["Backtesting"])
+# ✅ System: logs e status docker
+app.include_router(system.router, prefix="/api/system", tags=["System"])
+
+
+@app.get("/", tags=["Health"])
+async def root():
+    """Endpoint raiz - Status da API"""
+    return {
+        "status": "online",
+        "message": "Crypto Trading Bot API v1.1.0",
+        "features": [
+            "Trading Autônomo",
+            "Backtesting",
+            "Gestão de Risco",
+            "Análise Técnica",
+            "Notificações Telegram",
+            "Real-Time WebSockets"
+        ],
+        "docs": "/docs"
+    }
+
+
+# ==========================================
+# ✅ REAL-TIME WEBSOCKETS (Phase 3)
+# ==========================================
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except Exception:
+                pass
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        # Subscribe to Redis channel for bot events
+        settings = get_settings()
+        r = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            decode_responses=True
+        )
+        pubsub = r.pubsub()
+        pubsub.subscribe('bot_events')
+        
+        # Loop to read from Redis and send to WebSocket
+        # Note: This is a simple implementation. In production, we might want a separate background task
+        # broadcasting to the manager, rather than each WS connection having its own Redis sub loop.
+        # But for now, let's do a shared broadcast loop or just listen for client messages.
+        # Actually, to be efficient, we should have ONE Redis listener broadcasting to ALL websockets.
+        
+        # Better approach: The client just listens. The SERVER (app) should have a background task 
+        # that listens to Redis and uses 'manager.broadcast'.
+        
+        while True:
+            # Keep connection alive and handle incoming messages (ping/pong)
+            data = await websocket.receive_text()
+            # Optional: Handle commands from frontend via WS
+            if data == "ping":
+                await websocket.send_text("pong")
+                
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+
+# Background task to forward Redis events to WebSockets
+@app.on_event("startup")
+async def start_redis_listener():
+    async def redis_reader():
+        try:
+            settings = get_settings()
+            r = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                decode_responses=True
+            )
+            pubsub = r.pubsub()
+            pubsub.subscribe('bot_events')
+            
+            for message in pubsub.listen():
+                if message['type'] == 'message':
+                    await manager.broadcast(message['data'])
+        except Exception as e:
+            logger.error(f"Redis Listener Error: {e}")
+
+    # Run in background
+    asyncio.create_task(redis_reader())
+
+
+@app.get("/health", tags=["Health"])
+async def health():
+    """Health check da API com validações de dependências (DB, Redis, Binance, Supervisor)"""
+    settings = get_settings()
+
+    # DB check
+    db_ok = False
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as e:
+        logger.error(f"DB health check failed: {e}")
+
+    # Redis check
+    redis_ok = False
+    try:
+        r = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        redis_ok = bool(r.ping())
+    except Exception as e:
+        logger.error(f"Redis health check failed: {e}")
+
+    # Binance check (melhor esforço, não bloqueante)
+    binance_ok = False
+    try:
+        from utils.binance_client import binance_client
+        price = await binance_client.get_symbol_price("BTCUSDT")
+        binance_ok = price is not None
+    except Exception as e:
+        logger.error(f"Binance health check failed: {e}")
+
+    # Supervisor flag
+    supervisor_flag = Path("/logs/supervisor_enabled.flag")
+    supervisor_enabled = True
+    try:
+        if supervisor_flag.exists():
+            val = supervisor_flag.read_text(encoding="utf-8").strip()
+            supervisor_enabled = val != "0"
+    except Exception:
+        supervisor_enabled = True
+
+    overall = "healthy" if (db_ok and redis_ok) else ("degraded" if (db_ok or redis_ok) else "unhealthy")
+
+    return {
+        "status": overall,
+        "version": "1.1.0",
+        "modules": {
+            "positions": "✅ active",
+            "trading": "✅ active",
+            "backtesting": "✅ active",
+            "market": "✅ active"
+        },
+        "checks": {
+            "db": "ok" if db_ok else "fail",
+            "redis": "ok" if redis_ok else "fail",
+            "binance": "ok" if binance_ok else "fail",
+            "supervisor_enabled": supervisor_enabled
+        }
+    }
+
+
+@app.get("/version", tags=["Health"])
+async def version():
+    """Informações de versão"""
+    return {
+        "version": "1.1.0",
+        "release_date": "2025-10-22",
+        "changelog": [
+            "✅ Sistema de backtesting completo",
+            "✅ Trailing stop automático",
+            "✅ Pyramiding dinâmico",
+            "✅ Notificações Telegram avançadas",
+            "✅ Gestão de risco aprimorada"
+        ]
+    }
+
+
+logger.info("🚀 API iniciada com sucesso - v1.1.0")
+logger.info("📊 Backtesting module: LOADED")
+logger.info("🔗 Documentação disponível em: http://localhost:8000/docs")

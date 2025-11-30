@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-configmap
+data:
+  DATABASE_URL: "postgresql://trading_bot:secure_password_here@postgres-service:5432/trading_bot_db"
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  BINANCE_TESTNET: "True"
+  MAX_POSITIONS: "15"
+  BOT_MAX_POSITIONS: "15"
+  ENABLE_TRAILING_STOP: "True"
+  RISK_PER_TRADE: "0.02"
+  MAX_PORTFOLIO_RISK: "0.40"
+  DEFAULT_LEVERAGE: "3"
+  TELEGRAM_ENABLED: "True"
