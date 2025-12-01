@@ -28,19 +28,24 @@ class BinanceClientManager:
         self._ws_msg_count: int = 0
         
         # Inicializar cliente
-        if self.testnet:
-            self.client = Client(
-                self.api_key,
-                self.api_secret,
-                testnet=True
-            )
-            # URL CORRETA do testnet para futuros (com HTTPS)
-            self.client.FUTURES_URL = 'https://testnet.binancefuture.com'
-            self.client.FUTURES_STREAM_URL = 'wss://testnet.binancefuture.com'
-            logger.info("Cliente Binance inicializado no TESTNET (HTTPS)")
-        else:
-            self.client = Client(self.api_key, self.api_secret)
-            logger.info("Cliente Binance inicializado em PRODUÇÃO")
+        # Inicializar cliente
+        try:
+            if self.testnet:
+                self.client = Client(
+                    self.api_key,
+                    self.api_secret,
+                    testnet=True
+                )
+                # URL CORRETA do testnet para futuros (com HTTPS)
+                self.client.FUTURES_URL = 'https://testnet.binancefuture.com'
+                self.client.FUTURES_STREAM_URL = 'wss://testnet.binancefuture.com'
+                logger.info("Cliente Binance inicializado no TESTNET (HTTPS)")
+            else:
+                self.client = Client(self.api_key, self.api_secret)
+                logger.info("Cliente Binance inicializado em PRODUÇÃO")
+        except Exception as e:
+            logger.error(f"Falha ao inicializar cliente Binance (provavelmente erro de rede ou região): {e}")
+            self.client = None
 
     async def _retry_call(self, fn, *args, attempts: int = 3, base_sleep: float = 1.0, **kwargs):
         """
@@ -49,6 +54,8 @@ class BinanceClientManager:
         """
         for attempt in range(attempts):
             try:
+                if not self.client:
+                    raise BinanceAPIException(None, 0, "Client not initialized (network/region error)")
                 # Executar a função síncrona do python-binance em thread para não bloquear o loop
                 return await asyncio.to_thread(fn, *args, **kwargs)
             except BinanceAPIException as e:
