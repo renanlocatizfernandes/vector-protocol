@@ -1,8 +1,8 @@
-# Crypto Trading Bot (Atualizado 2025-11-11)
+# Antigravity Trading Bot (Atualizado 2025-12-01)
 
 Um bot de negociação de criptomoedas autônomo e personalizável, projetado para automatizar estratégias e otimizar retornos no mercado de criptoativos (Binance Futures USD‑M | Testnet por padrão).
 
-Este README foi revisado com uma análise técnica detalhada do projeto e alinhado com os arquivos em `docs/`. Itens de “Recomendações” descrevem melhorias propostas de configuração e arquitetura ainda não implementadas no código.
+Este README foi revisado com uma análise técnica detalhada do projeto e alinhado com os arquivos em `docs/`.
 
 ## Sumário
 
@@ -18,27 +18,30 @@ Este README foi revisado com uma análise técnica detalhada do projeto e alinha
 - Roadmap (próximas etapas)
 - Documentação relacionada
 
-## Destaques recentes (P1, P2 e P3)
+## Destaques recentes
 
-- P1 Execução
+- **🛡️ Supervisor (Self-Healing)**
+  - Monitoramento em tempo real de todos os loops do bot (Trading, Sniper, DCA).
+  - **Auto-Restart**: Reinicia automaticamente o bot se detectar congelamento.
+  - Monitoramento de recursos (CPU/RAM).
+  - API de saúde dedicada e Dashboard no frontend.
+
+- **📊 History Analyzer & Profit Maximization**
+  - Análise histórica de performance por símbolo.
+  - **Smart Blacklist**: Bloqueio automático de moedas com baixo win-rate.
+  - Cálculo preciso de PnL Realizado (incluindo taxas e funding).
+
+- **🚀 Execução Avançada**
   - LIMIT com buffer e re‑quote inteligente (até 3 tentativas).
-  - Maker post‑only (GTX) opcional e automático por spread:
-    - USE_POST_ONLY_ENTRIES (força maker) e/ou AUTO_POST_ONLY_ENTRIES + AUTO_MAKER_SPREAD_BPS (decide maker/taker em runtime).
-  - Timeout configurável para LIMIT antes de fallback MARKET (ORDER_TIMEOUT_SEC).
-  - Fallback MARKET com preço médio correto (consulta fills e calcula avgPrice real).
+  - Maker post‑only (GTX) opcional e automático por spread.
+  - Fallback MARKET com preço médio correto.
 
-- P1 Risco
-  - Headroom até liquidação: após abrir posição, checa liquidationPrice (futures_position_information) e, se < HEADROOM_MIN_PCT, reduz posição em etapas (REDUCE_STEP_PCT) via reduceOnly até atingir o headroom mínimo (best‑effort).
+- **⚖️ Risco Dinâmico**
+  - Headroom até liquidação: reduz posição automaticamente se margem perigosa.
+  - Gestão de risco por trade e portfólio global.
 
-- P2 Custos
-  - Utilitário para consultar taxas maker/taker por símbolo (futures_commission_rate) — base para decisões futuras de execução custo‑ótima.
-
-- P3 Estratégia
-  - Sinal com “regime” simples (trend/range) influenciando R:R mínimo aceito (1.0 vs 1.5) e score bônus.
-  - Leverage dinâmica (3x–20x) baseada em volume, RSI e R:R (refinada pela política de execução/riscos).
-
-- Notificações Telegram
-  - Mensagens ricas em HTML (trade aberto/fechado, TPs, SL, emergency stop, ajuste de headroom).
+- **📱 Notificações Telegram**
+  - Mensagens ricas em HTML (trade aberto/fechado, TPs, SL, emergency stop).
   - Envio assíncrono com retries e backoff.
 
 ## Estado atual (diagnóstico) vs. Recomendações
