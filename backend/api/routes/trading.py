@@ -12,6 +12,7 @@ from modules.order_executor import order_executor
 from utils.binance_client import binance_client
 from modules.position_monitor import position_monitor
 from modules.autonomous_bot import autonomous_bot
+from modules.history_analyzer import history_analyzer # ✅ NOVO
 from modules.risk_manager import risk_manager
 from utils.telegram_notifier import telegram_notifier
 from api.models.trades import Trade
@@ -20,6 +21,7 @@ from modules.daily_report import daily_report
 from datetime import datetime
 from utils.logger import setup_logger
 from config.settings import get_settings
+from sqlalchemy import func, case
 
 router = APIRouter()
 logger = setup_logger("trading_routes")
@@ -301,6 +303,40 @@ async def get_execution_metrics():
         raise HTTPException(status_code=500, detail=f"Erro ao obter métricas: {str(e)}")
 
 
+@router.get("/stats/pnl_by_symbol")
+async def get_pnl_by_symbol():
+    """Retorna PnL acumulado por símbolo"""
+    try:
+        db = SessionLocal()
+        try:
+            # Group by symbol
+            stats = db.query(
+                Trade.symbol,
+                func.count(Trade.id).label('total_trades'),
+                func.sum(Trade.pnl).label('total_pnl'),
+                func.sum(case((Trade.pnl > 0, 1), else_=0)).label('winning_trades')
+            ).filter(Trade.status == 'closed').group_by(Trade.symbol).all()
+            
+            result = []
+            for s in stats:
+                win_rate = (s.winning_trades / s.total_trades * 100) if s.total_trades > 0 else 0
+                result.append({
+                    "symbol": s.symbol,
+                    "total_trades": s.total_trades,
+                    "total_pnl": float(s.total_pnl or 0),
+                    "win_rate": float(win_rate)
+                })
+            
+            # Sort by total_pnl desc
+            result.sort(key=lambda x: x['total_pnl'], reverse=True)
+            return result
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Erro ao obter PnL por símbolo: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/monitoring/metrics")
 async def get_monitoring_metrics():
     """Retorna métricas agregadas do monitor de posições"""
@@ -311,7 +347,15 @@ async def get_monitoring_metrics():
         logger.error(f"Erro ao obter métricas de monitoramento: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro ao obter métricas: {str(e)}")
 
-
+@router.get("/history/analysis")
+async def get_history_analysis():
+    """Retorna análise de histórico e recomendações"""
+    try:
+        # Roda análise on-demand (ou poderia pegar do cache)
+        analysis = await history_analyzer.run_analysis_cycle()
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/risk/metrics")
 async def get_risk_metrics():
     """Retorna métricas agregadas do gerenciador de risco"""

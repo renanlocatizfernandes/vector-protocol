@@ -239,6 +239,21 @@ export async function supervisorToggle(): Promise<{ ok: boolean; enabled: boolea
   return unwrap(res);
 }
 
+export type SupervisorHealth = {
+  monitoring: boolean;
+  restarts: number;
+  components: Record<string, { status: string; last_heartbeat_ago: string }>;
+  system: {
+    cpu_percent: number;
+    memory_mb: number;
+  };
+};
+
+export async function getSupervisorHealth(): Promise<SupervisorHealth> {
+  const res = await http.get("/api/system/supervisor/health");
+  return unwrap(res);
+}
+
 // Metrics - New endpoints for module metrics
 export type BotMetrics = {
   total_cycles: number;
@@ -368,6 +383,39 @@ export async function getMonitoringMetrics(): Promise<MonitoringMetrics> {
 
 export async function getRiskMetrics(): Promise<RiskMetrics> {
   const res = await http.get("/api/trading/risk/metrics");
+  return unwrap(res);
+}
+
+export type PnlBySymbol = {
+  symbol: string;
+  total_trades: number;
+  total_pnl: number;
+  win_rate: number;
+};
+
+export async function getPnlBySymbol(): Promise<PnlBySymbol[]> {
+  const res = await http.get("/api/trading/stats/pnl_by_symbol");
+  return unwrap(res);
+}
+
+export interface HistoryAnalysis {
+  symbol_stats: {
+    symbol: string;
+    total_trades: number;
+    total_pnl: number;
+    win_rate: number;
+  }[];
+  blacklist_recommendations: string[];
+  binance_pnl_24h: {
+    net_pnl: number;
+    gross_pnl: number;
+    fees: number;
+    funding: number;
+  };
+}
+
+export async function getHistoryAnalysis(): Promise<HistoryAnalysis> {
+  const res = await http.get("/api/trading/history/analysis");
   return unwrap(res);
 }
 

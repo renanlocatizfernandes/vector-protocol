@@ -141,6 +141,13 @@ async def supervisor_status(tail: int = Query(default=50, ge=1, le=2000)):
     }
 
 
+@router.get("/supervisor/health", summary="Relatório de saúde do Supervisor")
+async def supervisor_health():
+    """Retorna status detalhado do Supervisor (heartbeats, recursos, restarts)"""
+    from modules.supervisor import supervisor
+    return supervisor.get_status()
+
+
 @router.post("/supervisor/enable", summary="Habilita o Supervisor (flag=1)")
 async def supervisor_enable():
     try:

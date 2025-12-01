@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Zap, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { http } from '../services/api'; // Changed: Import http client
 
 type AmountType = 'quantity' | 'usdt_total' | 'usdt_margin';
 
@@ -33,15 +31,16 @@ export const ManualTrade: React.FC = () => {
                 leverage: parseInt(leverage),
             };
 
-            const response = await axios.post(`${API_URL}/api/trading/manual`, payload);
+            // Changed: Use http client instead of axios with API_URL
+            const response = await http.post('/api/trading/manual', payload);
 
             if (response.data.success) {
-                setMessage({ type: 'success', text: `✅ Ordem executada: ${response.data.symbol} ${response.data.direction} @ ${response.data.entry_price}` });
+                setMessage({ type: 'success', text: "✅ Ordem executada: " + response.data.symbol + " " + response.data.direction + " @" + response.data.entry_price });
             } else {
-                setMessage({ type: 'error', text: `❌ Falha: ${response.data.reason || 'Erro desconhecido'}` });
+                setMessage({ type: 'error', text: "❌ Falha: " + (response.data.reason || 'Erro desconhecido') });
             }
         } catch (error: any) {
-            setMessage({ type: 'error', text: `❌ Erro: ${error.response?.data?.detail || error.message}` });
+            setMessage({ type: 'error', text: "❌ Erro: " + (error.response?.data?.detail || error.message) });
         } finally {
             setLoading(false);
         }
@@ -150,9 +149,9 @@ export const ManualTrade: React.FC = () => {
                             </button>
                         </div>
                         <div className="text-[10px] text-muted-foreground text-center h-4">
-                            {amountType === 'quantity' && `Ex: 0.001 BTC`}
-                            {amountType === 'usdt_total' && `Ex: $1000 (Posição Total)`}
-                            {amountType === 'usdt_margin' && `Ex: $100 (Custo da Margem)`}
+                            {amountType === 'quantity' && "Ex: 0.001 BTC"}
+                            {amountType === 'usdt_total' && "Ex: $1000(Posição Total)"}
+                            {amountType === 'usdt_margin' && "Ex: $100(Custo da Margem)"}
                         </div>
                     </div>
 

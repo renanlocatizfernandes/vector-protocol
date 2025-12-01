@@ -196,7 +196,8 @@ class OrderExecutor:
                     entry_price=signal['entry_price'],
                     stop_loss=signal['stop_loss'],
                     leverage=signal['leverage'],
-                    account_balance=account_balance
+                    account_balance=account_balance,
+                    score=signal.get('score', 50)  # ✅ NOVO: Passar score
                 )
             
             if not risk_calc['approved']:

@@ -23,14 +23,26 @@ from modules.bot.loops import BotLoops
 from modules.bot.strategies import BotStrategies
 from modules.bot.actions import BotActions
 from modules.risk_calculator import risk_calculator
-from modules import correlation_filter, market_filter, market_scanner, order_executor, signal_generator
+from modules.correlation_filter import correlation_filter
+from modules.market_filter import market_filter
+from modules.market_scanner import market_scanner
+from modules.order_executor import order_executor
+from modules.signal_generator import signal_generator
+from modules.metrics_collector import metrics_collector
+from modules.history_analyzer import history_analyzer
+from modules.supervisor import supervisor  # ✅ NOVO
 from utils.redis_client import redis_client
 
 logger = setup_logger("autonomous_bot")
 
 class AutonomousBot:
     def __init__(self):
-        self.base_scan_interval = 600
+        self.bot_config = BotConfig()
+        # ... (rest of init)
+        
+        # Registrar no Supervisor
+        supervisor.register_bot(self)
+        self.base_scan_interval = int(getattr(get_settings(), "BOT_SCAN_INTERVAL_MINUTES", 1)) * 60
         self.base_max_positions = 15
         self.base_max_new_per_cycle = 5
         self.pyramiding_enabled = True
@@ -76,6 +88,7 @@ class AutonomousBot:
         position_monitor.start_monitoring()
         self.loops.start()
         asyncio.create_task(telegram_bot.start())
+        asyncio.create_task(supervisor.start_monitoring()) # ✅ Iniciar Supervisor
         await self._sync_positions_with_binance()
 
     def stop(self):
@@ -83,6 +96,7 @@ class AutonomousBot:
         self.running = False
         self.loops.stop()
         position_monitor.stop_monitoring()
+        asyncio.create_task(supervisor.stop_monitoring()) # ✅ Parar Supervisor
         logger.info("🛑 Bot parado")
 
     def get_metrics(self) -> Dict:
@@ -102,6 +116,7 @@ class AutonomousBot:
         logger.info("📈 Loop de pyramiding iniciado")
         
         while self.running:
+            supervisor.heartbeat("pyramiding_loop")
             try:
                 db = SessionLocal()
                 try:
@@ -172,6 +187,7 @@ class AutonomousBot:
         settings = get_settings()
 
         while self.running:
+            supervisor.heartbeat("sniper_loop")
             try:
                 if not self.sniper_enabled:
                     await asyncio.sleep(60)
@@ -204,6 +220,7 @@ class AutonomousBot:
         logger.info("📉 Smart DCA loop iniciado")
         
         while self.running:
+            supervisor.heartbeat("dca_loop")
             try:
                 dca_enabled = bool(getattr(get_settings(), "DCA_ENABLED", True))
                 if not dca_enabled:
@@ -283,12 +300,46 @@ class AutonomousBot:
                 logger.error(f"Erro no loop DCA: {e}")
                 await asyncio.sleep(60)
 
+    async def _run_periodic_tasks(self):
+        """Executa tarefas periódicas (limpeza, sync, análise)"""
+        while self.running:
+            try:
+                # 1. Sync de posições (a cada 10 min)
+                if self.config.positions_auto_sync_enabled:
+                    await self.position_manager.sync_positions_with_binance()
+                
+                # 2. Análise de Histórico (a cada 4 horas)
+                # Usar um contador ou timestamp seria melhor, mas sleep longo bloqueia
+                # Vamos rodar a análise em background sem bloquear
+                asyncio.create_task(self._run_history_analysis())
+
+                await asyncio.sleep(self.config.positions_auto_sync_minutes * 60)
+            except Exception as e:
+                logger.error(f"Erro nas tarefas periódicas: {e}")
+                await asyncio.sleep(60)
+
+    async def _run_history_analysis(self):
+        """Roda análise de histórico e aplica blacklist"""
+        try:
+            logger.info("📜 Rodando análise de histórico...")
+            analysis = await history_analyzer.run_analysis_cycle()
+            
+            # Aplicar blacklist
+            if analysis['blacklist_recommendations']:
+                for symbol in analysis['blacklist_recommendations']:
+                    await position_monitor._add_to_symbol_blacklist(symbol)
+                    logger.warning(f"🚫 {symbol} adicionado ao blacklist por baixa performance")
+                    
+        except Exception as e:
+            logger.error(f"Erro na análise de histórico: {e}")
+
     async def _time_based_exit_loop(self):
         """✅ NOVO v5.0: Time-Based Exit Strategy"""
         await asyncio.sleep(120)
         logger.info("⏱️ Time-Based Exit loop iniciado")
         
         while self.running:
+            supervisor.heartbeat("time_exit_loop")
             try:
                 max_hold_hours = int(getattr(get_settings(), "TIME_EXIT_HOURS", 6))
                 min_profit_pct = float(getattr(get_settings(), "TIME_EXIT_MIN_PROFIT_PCT", 0.5))
@@ -350,7 +401,11 @@ class AutonomousBot:
                 tp_pct = float(getattr(settings, "SNIPER_TP_PCT", 0.6)) / 100.0
                 sl_pct = float(getattr(settings, "SNIPER_SL_PCT", 0.3)) / 100.0
                 lev_default = int(getattr(settings, "SNIPER_DEFAULT_LEVERAGE", 10))
-                price = await binance_client.get_symbol_price(sym) # Corrigido aqui
+                price = await binance_client.get_symbol_price(sym)
+                if not price:
+                    logger.warning(f"⚠️ Preço não disponível para {sym}, pulando.")
+                    continue
+                
                 direction = "LONG"
 
                 stop = price * (1.0 - sl_pct) if direction == "LONG" else price * (1.0 + sl_pct)

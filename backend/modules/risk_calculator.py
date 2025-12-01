@@ -48,7 +48,8 @@ class RiskCalculator:
         stop_loss: float,
         leverage: int,
         account_balance: float,
-        open_positions_margin: float = 0.0
+        open_positions_margin: float = 0.0,
+        score: int = 50  # ✅ NOVO: Score para dynamic sizing
     ) -> Dict:
         """
         Calcula tamanho da posição com validações rigorosas
@@ -105,6 +106,19 @@ class RiskCalculator:
             
             # Ajustar margem baseado em performance recente
             adjusted_margin_pct = max(self.min_margin_per_position, self._adjust_margin_for_performance())
+            
+            # ✅ NOVO: Dynamic Sizing baseado no Score
+            # Score 40-60: Base (10%)
+            # Score 60-80: High Conviction (15%)
+            # Score 80+: Sniper/Ultra (20%)
+            if score >= 80:
+                adjusted_margin_pct = max(adjusted_margin_pct, 0.20)
+                logger.info(f"🚀 {symbol}: Score {score} (SNIPER) -> Margem boost para 20%")
+            elif score >= 60:
+                adjusted_margin_pct = max(adjusted_margin_pct, 0.15)
+                logger.info(f"✨ {symbol}: Score {score} (HIGH CONVICTION) -> Margem boost para 15%")
+            else:
+                logger.info(f"🔹 {symbol}: Score {score} (NORMAL) -> Margem base {adjusted_margin_pct*100:.1f}%")
             
             # Margem disponível para esta posição
             max_margin_this_position = min(
@@ -294,6 +308,39 @@ class RiskCalculator:
         volume_ratio = current_volume / avg_volume_20
         
         return volume_ratio
+
+    def calculate_rsi(self, closes: List[float], period: int = 14) -> float:
+        """
+        ✅ NOVO: Calcula RSI simples para validação de DCA
+        """
+        if len(closes) < period + 1:
+            return 50.0
+            
+        import numpy as np
+        
+        deltas = np.diff(closes)
+        seed = deltas[:period+1]
+        up = seed[seed >= 0].sum()/period
+        down = -seed[seed < 0].sum()/period
+        rs = up/down
+        rsi = np.zeros_like(closes)
+        rsi[:period] = 100. - 100./(1. + rs)
+
+        for i in range(period, len(closes)):
+            delta = deltas[i-1]
+            if delta > 0:
+                upval = delta
+                downval = 0.
+            else:
+                upval = 0.
+                downval = -delta
+
+            up = (up*(period-1) + upval)/period
+            down = (down*(period-1) + downval)/period
+            rs = up/down
+            rsi[i] = 100. - 100./(1. + rs)
+            
+        return rsi[-1]
     
     def validate_correlation_impact(
         self,

@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
-import axios from 'axios';
+import { http } from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 interface TradeHistory {
     id: number;
@@ -26,7 +24,7 @@ export const PerformanceChart: React.FC = () => {
 
     const fetchHistory = async () => {
         try {
-            const response = await axios.get(`${API_URL}/api/trading/history?limit=50`);
+            const response = await http.get('/api/trading/history?limit=50');
             const trades: TradeHistory[] = response.data;
 
             // Processar dados para acumulado

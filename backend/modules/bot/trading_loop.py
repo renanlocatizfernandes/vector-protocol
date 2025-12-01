@@ -12,6 +12,7 @@ from modules.position_monitor import position_monitor
 from modules.market_filter import market_filter
 from modules.correlation_filter import correlation_filter
 from modules.metrics_collector import metrics_collector
+from modules.supervisor import supervisor  # ✅ NOVO
 
 logger = setup_logger("trading_loop")
 
@@ -36,6 +37,7 @@ class TradingLoop:
         await asyncio.sleep(3)
 
         while self.running:
+            supervisor.heartbeat("trading_loop") # ✅ Heartbeat
             try:
                 cycle_start_time = time.time()
                 cycle_metrics = {

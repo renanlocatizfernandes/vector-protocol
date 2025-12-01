@@ -75,9 +75,9 @@ class Settings(BaseSettings):
     
     # Market Scanner (cobertura de universo)
     SCANNER_TOP_N: int = 800                     # Top-N por volume (quoteVolume) para priorização
-    SCANNER_MAX_SYMBOLS: int = 160               # Limite de símbolos processados por ciclo (performance)
+    SCANNER_MAX_SYMBOLS: int = 400               # Limite de símbolos processados por ciclo (performance)
     SCANNER_TESTNET_STRICT_WHITELIST: bool = False # Se True, restringe ao whitelist no TESTNET
-    MIN_QUOTE_VOLUME_USDT_24H: float = 1_000_000.0   # Liquidez mínima 24h reduzida para 1M (Sniper Mode)
+    MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Liquidez mínima 24h reduzida para 500k (Ultra Aggressive)
     SCANNER_CONCURRENCY: int = 8                 # Paralelismo sugerido para chamadas de klines/validações
     TESTNET_WHITELIST: list[str] = [             # Whitelist padrão para TESTNET
         "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
@@ -90,27 +90,27 @@ class Settings(BaseSettings):
     
     # Smart DCA
     DCA_ENABLED: bool = True
-    MAX_DCA_COUNT: int = 2
-    DCA_THRESHOLD_PCT: float = -2.5  # Trigger DCA at -2.5% PnL
+    MAX_DCA_COUNT: int = 3  # Aumentado para 3
+    DCA_THRESHOLD_PCT: float = -2.0  # Trigger DCA at -2.0% PnL (mais cedo)
     DCA_MULTIPLIER: float = 1.5  # Buy 1.5x the current size
     
     # Time-Based Exit
-    TIME_EXIT_HOURS: int = 6  # Close if held > 6h
-    TIME_EXIT_MIN_PROFIT_PCT: float = 0.5  # And profit < 0.5% (stagnant)
+    TIME_EXIT_HOURS: int = 4  # Close if held > 4h (mais rápido)
+    TIME_EXIT_MIN_PROFIT_PCT: float = 0.3  # And profit < 0.3% (stagnant)
     
     # Legacy settings (maintained for compatibility)
-    PROD_MIN_SCORE: int = 40  # Reduzido para 40 (Super Aggressive)
+    PROD_MIN_SCORE: int = 30  # Reduzido para 30 (Ultra Aggressive)
     PROD_VOLUME_THRESHOLD: float = 0.1  # Reduzido para 0.1
-    PROD_RSI_OVERSOLD: int = 35 # Relaxado
-    PROD_RSI_OVERBOUGHT: int = 65 # Relaxado
+    PROD_RSI_OVERSOLD: int = 40 # Relaxado
+    PROD_RSI_OVERBOUGHT: int = 60 # Relaxado
     REQUIRE_TREND_CONFIRMATION: bool = False # Desativado
-    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.1  # Mínimo momentum
-    RR_MIN_TREND: float = 1.1  # R:R mínimo agressivo
-    RR_MIN_RANGE: float = 1.2  # R:R mínimo agressivo
+    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.05  # Mínimo momentum reduzido
+    RR_MIN_TREND: float = 1.0  # R:R mínimo agressivo
+    RR_MIN_RANGE: float = 1.0  # R:R mínimo agressivo
 
     # Correlação
     CORR_WINDOW_DAYS: int = 14
-    MAX_CORRELATION: float = 0.7 # Aumentado para permitir mais sinais correlacionados
+    MAX_CORRELATION: float = 0.85 # Aumentado para permitir mais sinais correlacionados
 
     # Mercado (pump/dump e requisitos)
     PUMP_THRESHOLD_PCT: float = 40.0 # Aumentado para ser menos restritivo
@@ -119,25 +119,25 @@ class Settings(BaseSettings):
     DUMP_THRESHOLD_PCT: float = 30.0 # Aumentado para ser menos restritivo
     DUMP_TIMEFRAME_HOURS: int = 2
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    REQUIRED_SCORE_SIDEWAYS: int = 50  # Relaxado para 50
+    REQUIRED_SCORE_SIDEWAYS: int = 40  # Relaxado para 40
 
     # Risco adicional
-    DAILY_MAX_LOSS_PCT: float = 0.05
-    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.08
+    DAILY_MAX_LOSS_PCT: float = 0.10 # Aumentado para 10%
+    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.15 # Aumentado para 15%
 
     # ========================================
     # SIGNAL GENERATOR - Advanced Filters (v5.0)
     # ========================================
     
     # ADX Trend Strength Filter
-    ENABLE_ADX_FILTER: bool = True
-    ADX_MIN_TREND_STRENGTH: float = 15.0  # Minimum ADX to consider trend strong enough
+    ENABLE_ADX_FILTER: bool = False # Desativado para pegar qualquer movimento
+    ADX_MIN_TREND_STRENGTH: float = 10.0
     
     # Auto-start do Bot
     AUTOSTART_BOT: bool = True
     BOT_DRY_RUN: bool = False
-    BOT_MIN_SCORE: int = 50  # Reduzido para 50 (Aggressive Mode para gerar mais sinais)
-    BOT_MAX_POSITIONS: int = 10  # Reduzido para 10 (foco em qualidade)
+    BOT_MIN_SCORE: int = 30  # Reduzido para 30 (Ultra Aggressive)
+    BOT_MAX_POSITIONS: int = 25  # Aumentado para 25
     BOT_SCAN_INTERVAL_MINUTES: int = 1
 
     # Positions Sync

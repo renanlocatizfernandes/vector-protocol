@@ -3,25 +3,28 @@ import {
   getHealth,
   getBotStatus,
   getSupervisorStatus,
+  getSupervisorHealth,
   supervisorEnable,
   supervisorDisable,
   supervisorToggle,
   type Health,
   type BotStatus,
-  type SupervisorStatus
+  type SupervisorStatus,
+  type SupervisorHealth
 } from "../services/api";
 import DockerStatus from "../components/DockerStatus";
 import LogsViewer from "../components/LogsViewer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Activity, Server, PlayCircle, StopCircle, RefreshCw, Terminal, Power } from "lucide-react";
+import { Shield, Activity, Server, PlayCircle, StopCircle, RefreshCw, Terminal, Power, HeartPulse, Cpu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function Supervisor() {
   const [health, setHealth] = useState<Health | null>(null);
   const [bot, setBot] = useState<BotStatus | null>(null);
   const [sup, setSup] = useState<SupervisorStatus | null>(null);
+  const [supHealth, setSupHealth] = useState<SupervisorHealth | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [supLoading, setSupLoading] = useState(false);
@@ -31,14 +34,16 @@ export default function Supervisor() {
   const loadAll = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const [h, b, s] = await Promise.all([
+      const [h, b, s, sh] = await Promise.all([
         getHealth().catch(() => null),
         getBotStatus().catch(() => null),
-        getSupervisorStatus().catch(() => null)
+        getSupervisorStatus().catch(() => null),
+        getSupervisorHealth().catch(() => null)
       ]);
       if (h) setHealth(h);
       if (b) setBot(b);
       if (s) setSup(s);
+      if (sh) setSupHealth(sh);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -58,8 +63,12 @@ export default function Supervisor() {
   const refreshSup = async () => {
     setSupLoading(true);
     try {
-      const s = await getSupervisorStatus();
+      const [s, sh] = await Promise.all([
+        getSupervisorStatus(),
+        getSupervisorHealth().catch(() => null)
+      ]);
       setSup(s);
+      if (sh) setSupHealth(sh);
     } finally {
       setSupLoading(false);
     }
@@ -126,6 +135,11 @@ export default function Supervisor() {
         <Badge variant={supEnabled ? "success" : "destructive"} className="px-3 py-1 text-sm">
           Supervisor: {supEnabled ? "Ativado" : "Desativado"}
         </Badge>
+        {supHealth && (
+          <Badge variant="outline" className="px-3 py-1 text-sm">
+            Restarts: {supHealth.restarts}
+          </Badge>
+        )}
       </div>
 
       <div className="flex gap-2">
@@ -141,7 +155,7 @@ export default function Supervisor() {
       </div>
 
       {/* RESUMO RÁPIDO */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -170,6 +184,77 @@ export default function Supervisor() {
           </CardContent>
         </Card>
 
+        {/* NOVO: Heartbeats */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <HeartPulse className="h-5 w-5 text-red-500" /> Heartbeats
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!supHealth ? (
+              <div className="text-sm text-muted-foreground">Sem dados de telemetria</div>
+            ) : (
+              <div className="space-y-2">
+                {Object.entries(supHealth.components).map(([comp, data]) => (
+                  <div key={comp} className="flex justify-between items-center text-sm border-b pb-1 last:border-0">
+                    <span className="capitalize">{comp.replace("_loop", "")}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{data.last_heartbeat_ago}</span>
+                      <Badge variant={data.status === "ok" ? "success" : "destructive"} className="h-5 px-1">
+                        {data.status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* NOVO: Recursos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5 text-blue-500" /> Recursos
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!supHealth ? (
+              <div className="text-sm text-muted-foreground">Sem dados de recursos</div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>CPU Usage</span>
+                    <span>{supHealth.system.cpu_percent.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 transition-all duration-500"
+                      style={{ width: `${Math.min(supHealth.system.cpu_percent, 100)}%` }}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>RAM Usage</span>
+                    <span>{supHealth.system.memory_mb.toFixed(0)} MB</span>
+                  </div>
+                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-purple-500 transition-all duration-500"
+                      style={{ width: `${Math.min((supHealth.system.memory_mb / 1024) * 100, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -191,23 +276,6 @@ export default function Supervisor() {
                 {(sup?.interventions_tail || []).join("\n") || "—"}
               </pre>
             </details>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Quando usar o Supervisor?</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-2">
-            <ul className="list-disc list-inside space-y-1">
-              <li>Manter a API saudável automaticamente (auto-fix para falhas comuns).</li>
-              <li>Garantir que o bot permaneça rodando (ensure-running).</li>
-              <li>Intervir em inatividade (reinicia bot/serviço).</li>
-            </ul>
-            <p>
-              Se preferir controle manual via UI, mantenha o Supervisor desligado. Para automação e
-              resiliência, rode o Supervisor com <code>watch</code>.
-            </p>
           </CardContent>
         </Card>
 
@@ -243,14 +311,6 @@ python3 supervisor.py restart-api --service api
 # Parar stack
 python3 supervisor.py down`}
             </pre>
-            <div className="mt-4">
-              <h4 className="text-sm font-semibold mb-2">Notas de Operação</h4>
-              <ul className="list-disc list-inside text-xs text-muted-foreground space-y-1">
-                <li><b>--ensure-running</b> liga o “auto-start” caso o bot pare.</li>
-                <li><b>--bot-dry-run</b> força iniciar em modo simulado nas intervenções.</li>
-                <li><b>--inactive-mins</b> reinicia o bot se não houver atividade por X minutos.</li>
-              </ul>
-            </div>
           </CardContent>
         </Card>
       </div>
@@ -270,36 +330,6 @@ python3 supervisor.py down`}
           </CardContent>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Cenários recomendados</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-4 border rounded-lg bg-muted/30">
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <StopCircle className="h-4 w-4 text-red-500" /> Supervisor DESLIGADO
-              </h4>
-              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>Uso exploratório e controle total pela UI.</li>
-                <li>Start/Stop via painel, ajustes de config por demanda.</li>
-                <li>Requer atenção manual em quedas/erros.</li>
-              </ul>
-            </div>
-            <div className="p-4 border rounded-lg bg-muted/30">
-              <h4 className="font-semibold mb-2 flex items-center gap-2">
-                <PlayCircle className="h-4 w-4 text-green-500" /> Supervisor LIGADO
-              </h4>
-              <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
-                <li>Ambiente always-on, com auto-fix e auto-start do bot.</li>
-                <li>Mitiga falhas transitórias, reinicia serviços quando necessário.</li>
-                <li>UI permanece para inspeção e ajustes finos de parâmetros.</li>
-              </ul>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

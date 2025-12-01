@@ -229,6 +229,16 @@ class PositionMonitor:
                                     self._track_event("partial_tp", trade.symbol, pnl_percentage, current_price)
                                     continue
                             
+                            # ✅ NOVO v5.0: Smart DCA Check
+                            if await self._check_dca_opportunity(trade, pnl_percentage, current_price, db):
+                                self._track_event("dca_buy", trade.symbol, pnl_percentage, current_price)
+                                continue
+
+                            # ✅ NOVO v5.0: Time-Based Exit Check
+                            if await self._check_time_exit(trade, pnl_percentage, current_price, db):
+                                self._track_event("time_exit", trade.symbol, pnl_percentage, current_price)
+                                continue
+                            
                             # Emergency stop loss (-15%)
                             if pnl_percentage <= self.emergency_stop_loss:
                                 logger.error(
@@ -577,6 +587,170 @@ class PositionMonitor:
                 return False
         
         return False
+
+    async def _check_dca_opportunity(
+        self,
+        trade: Trade,
+        pnl_percentage: float,
+        current_price: float,
+        db: SessionLocal
+    ) -> bool:
+        """
+        ✅ NOVO v5.0: Smart DCA (Dollar Cost Averaging)
+        Compra mais se o trade for contra (-2.5%) mas a tendência ainda for válida.
+        """
+        
+        # Verificar se DCA está habilitado
+        if not getattr(self.settings, "DCA_ENABLED", True):
+            return False
+            
+        # Verificar limite de DCAs
+        max_dca = int(getattr(self.settings, "MAX_DCA_COUNT", 2))
+        current_dca = int(trade.dca_count or 0)
+        
+        if current_dca >= max_dca:
+            return False
+            
+        # Verificar threshold (-2.5%)
+        dca_threshold = float(getattr(self.settings, "DCA_THRESHOLD_PCT", -2.5))
+        
+        # Só faz DCA se o preço cair abaixo do threshold
+        # E se já caiu mais um tanto desde o último DCA (ex: -2.5%, -5.0%)
+        required_drop = dca_threshold * (current_dca + 1)
+        
+        if pnl_percentage <= required_drop:
+            # ✅ NOVO: Não fazer DCA se já atingiu Max Loss ou Emergency Stop
+            if pnl_percentage <= self.max_loss_per_trade:
+                logger.warning(f"🛑 DCA cancelado para {trade.symbol}: PnL {pnl_percentage:.2f}% atingiu Max Loss")
+                return False
+                
+            # Validar se vale a pena fazer DCA (trend ainda existe?)
+            # Simplificado: verificar se não está em queda livre (RSI não extremo oposto)
+            try:
+                klines = await binance_client.get_klines(trade.symbol, interval='1h', limit=14)
+                if not klines:
+                    return False
+                    
+                closes = [float(k[4]) for k in klines]
+                rsi = risk_calculator.calculate_rsi(closes)
+                
+                # Se LONG e RSI > 70 (overbought), não faz sentido comprar mais (estranho estar perdendo)
+                # Se SHORT e RSI < 30 (oversold), não faz sentido vender mais
+                if trade.direction == 'LONG' and rsi > 70:
+                    return False
+                if trade.direction == 'SHORT' and rsi < 30:
+                    return False
+                    
+            except Exception:
+                pass # Se falhar verificação, assume risco e faz DCA
+            
+            logger.info(
+                f"📉 DCA OPPORTUNITY: {trade.symbol} PnL {pnl_percentage:.2f}%\n"
+                f"  DCA Count: {current_dca}/{max_dca}\n"
+                f"  Executando compra média..."
+            )
+            
+            # Calcular tamanho do DCA (Martingale ou fixo)
+            multiplier = float(getattr(self.settings, "DCA_MULTIPLIER", 1.5))
+            additional_qty = trade.quantity * multiplier
+            
+            symbol_info = await binance_client.get_symbol_info(trade.symbol)
+            additional_qty = round_step_size(additional_qty, symbol_info['step_size'])
+            
+            side = 'BUY' if trade.direction == 'LONG' else 'SELL'
+            
+            try:
+                order = await asyncio.to_thread(
+                    self.client.futures_create_order,
+                    symbol=trade.symbol,
+                    side=side,
+                    type='MARKET',
+                    quantity=additional_qty
+                )
+                
+                avg_price = float(order['avgPrice'])
+                
+                # Atualizar preço médio e quantidade
+                total_qty = trade.quantity + additional_qty
+                new_entry = ((trade.entry_price * trade.quantity) + (avg_price * additional_qty)) / total_qty
+                
+                trade.quantity = total_qty
+                trade.entry_price = new_entry
+                trade.dca_count = current_dca + 1
+                
+                # Ajustar Stop Loss para novo preço médio (mantendo % de risco original ou ajustando)
+                # Vamos manter a distância original em %
+                if trade.direction == 'LONG':
+                    trade.stop_loss = new_entry * (1 - (abs(trade.entry_price - trade.stop_loss)/trade.entry_price))
+                else:
+                    trade.stop_loss = new_entry * (1 + (abs(trade.stop_loss - trade.entry_price)/trade.entry_price))
+                
+                db.commit()
+                
+                logger.info(f"✅ DCA Executado: Novo Entry {new_entry:.4f}, Qty {total_qty:.4f}")
+                
+                try:
+                    await telegram_notifier.send_message(
+                        f"📉 DCA Executado: {trade.symbol}\n"
+                        f"Novo Entry: {new_entry:.4f}\n"
+                        f"Nova Qty: {total_qty:.4f}\n"
+                        f"DCA #{current_dca + 1}"
+                    )
+                except:
+                    pass
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"❌ Erro ao executar DCA: {e}")
+                return False
+                
+        return False
+
+    async def _check_time_exit(
+        self,
+        trade: Trade,
+        pnl_percentage: float,
+        current_price: float,
+        db: SessionLocal
+    ) -> bool:
+        """
+        ✅ NOVO v5.0: Time-Based Exit
+        Fecha posição se segurada por muito tempo com pouco lucro.
+        """
+        
+        max_hours = int(getattr(self.settings, "TIME_EXIT_HOURS", 6))
+        min_profit = float(getattr(self.settings, "TIME_EXIT_MIN_PROFIT_PCT", 0.5))
+        
+        # Calcular tempo de hold
+        if not trade.opened_at:
+            return False
+            
+        # Garantir timezone aware
+        now = datetime.now(timezone.utc)
+        entry_time = trade.opened_at.replace(tzinfo=timezone.utc) if trade.opened_at.tzinfo is None else trade.opened_at
+        
+        hold_duration = now - entry_time
+        hold_hours = hold_duration.total_seconds() / 3600
+        
+        if hold_hours > max_hours:
+            # Se lucro for menor que o mínimo aceitável para tanto tempo
+            if pnl_percentage < min_profit:
+                logger.info(
+                    f"⌛ TIME EXIT: {trade.symbol} segurado por {hold_hours:.1f}h\n"
+                    f"  PnL {pnl_percentage:.2f}% < {min_profit}%\n"
+                    f"  Fechando posição estagnada..."
+                )
+                
+                await self._close_position(
+                    trade,
+                    current_price,
+                    reason=f"Time Exit ({hold_hours:.1f}h, PnL {pnl_percentage:.2f}%)",
+                    db=db
+                )
+                return True
+                
+        return False
     
     async def _close_position(
         self,
@@ -585,32 +759,98 @@ class PositionMonitor:
         reason: str,
         db: SessionLocal
     ):
-        """Fecha uma posição completamente"""
+        """Fecha uma posição completamente com proteção contra race condition e maxQty"""
+        
+        # ✅ Proteção contra Race Condition
+        if not hasattr(self, '_closing_symbols'):
+            self._closing_symbols = set()
+            
+        if trade.symbol in self._closing_symbols:
+            logger.warning(f"⚠️ {trade.symbol} já está sendo fechado. Ignorando chamada duplicada.")
+            return
+
+        self._closing_symbols.add(trade.symbol)
         
         try:
             side = 'SELL' if trade.direction == 'LONG' else 'BUY'
             
-            # Ajustar quantidade para step_size (evita erro -1111 de precisão)
+            # Obter informações do símbolo para precisão e limites
             try:
                 symbol_info = await binance_client.get_symbol_info(trade.symbol)
                 step = symbol_info.get('step_size') if symbol_info else None
-            except Exception:
+                
+                # ✅ Verificar Max Quantity (MARKET_LOT_SIZE)
+                max_qty = float('inf')
+                if symbol_info and 'filters' in symbol_info:
+                    for f in symbol_info['filters']:
+                        if f['filterType'] == 'MARKET_LOT_SIZE':
+                            max_qty = float(f['maxQty'])
+                            break
+                        elif f['filterType'] == 'LOT_SIZE':
+                            max_qty = float(f['maxQty'])
+                            
+            except Exception as e:
+                logger.error(f"Erro ao obter info do símbolo {trade.symbol}: {e}")
                 step = None
-            close_qty = round_step_size(float(trade.quantity or 0), step) if step else float(trade.quantity or 0)
+                max_qty = float('inf')
 
-            order = await asyncio.to_thread(
-                self.client.futures_create_order,
-                symbol=trade.symbol,
-                side=side,
-                type='MARKET',
-                quantity=close_qty,
-                reduceOnly=True
-            )
+            original_qty = float(trade.quantity or 0)
+            close_qty = round_step_size(original_qty, step) if step else original_qty
+            
+            # ✅ Lógica de Split Order se quantidade > maxQty
+            remaining_qty = close_qty
+            orders = []
+            
+            while remaining_qty > 0:
+                current_chunk = min(remaining_qty, max_qty)
+                current_chunk = round_step_size(current_chunk, step) if step else current_chunk
+                
+                if current_chunk <= 0:
+                    break
+                    
+                logger.info(f"📉 Fechando {trade.symbol}: Chunk {current_chunk} (Restante: {remaining_qty})")
+                
+                try:
+                    order = await asyncio.to_thread(
+                        self.client.futures_create_order,
+                        symbol=trade.symbol,
+                        side=side,
+                        type='MARKET',
+                        quantity=current_chunk,
+                        reduceOnly=True
+                    )
+                    orders.append(order)
+                    remaining_qty -= current_chunk
+                    
+                    # Pequeno delay para evitar rate limit se forem muitas ordens
+                    if remaining_qty > 0:
+                        await asyncio.sleep(0.1)
+                        
+                except Exception as e:
+                    logger.error(f"❌ Erro ao enviar ordem de fechamento ({current_chunk}): {e}")
+                    # Se falhar, tenta continuar ou para? Melhor parar para evitar loop infinito
+                    break
+
+            if not orders:
+                raise Exception("Nenhuma ordem de fechamento foi executada com sucesso")
+
+            # Usar a última ordem para pegar preço (ou média se possível, mas simplificando)
+            last_order = orders[-1]
             
             trade.status = 'closed'
             trade.closed_at = datetime.now()
-            trade.pnl = float(order.get('cumQuote', trade.pnl))
             
+            # Calcular PnL acumulado das ordens (aproximado)
+            total_pnl = 0.0
+            for o in orders:
+                total_pnl += float(o.get('cumQuote', 0)) if float(o.get('cumQuote', 0)) != 0 else 0
+            
+            # Se não tiver cumQuote (algumas respostas de market não tem), usa estimativa
+            if total_pnl == 0:
+                 total_pnl = trade.pnl # Mantém o anterior se não conseguir calcular
+            else:
+                 trade.pnl = total_pnl
+
             # ✅ NOVO v4.0: Finalizar tracking de métricas da posição
             self._finalize_position_tracking(trade.symbol, trade.entry_price, current_price, trade.direction)
             
@@ -619,7 +859,8 @@ class PositionMonitor:
             logger.info(
                 f"✅ Posição fechada: {trade.symbol} {trade.direction}\n"
                 f"  Motivo: {reason}\n"
-                f"  P&L: {trade.pnl:+.2f} USDT ({trade.pnl_percentage:+.2f}%)"
+                f"  Ordens: {len(orders)}\n"
+                f"  P&L Final: {trade.pnl:+.2f} USDT"
             )
             
             # Atualizar circuit breaker
@@ -656,9 +897,11 @@ class PositionMonitor:
                 })
             except:
                 pass
-            
+        
         except Exception as e:
-            logger.error(f"❌ Erro ao fechar posição {trade.symbol}: {e}")
+            logger.error(f"❌ Erro crítico ao fechar posição {trade.symbol}: {e}")
+        finally:
+            self._closing_symbols.remove(trade.symbol)
     
     async def _add_to_symbol_blacklist(self, symbol: str):
         """Circuit breaker por símbolo - bloqueia por 2h"""

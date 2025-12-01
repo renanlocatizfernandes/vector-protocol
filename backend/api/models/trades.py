@@ -49,6 +49,7 @@ class Trade(Base):
     trailing_peak_price = Column(Float, nullable=True)
     pyramided = Column(Boolean, nullable=True, default=False)
     partial_taken = Column(Boolean, nullable=True, default=False)
+    dca_count = Column(Integer, nullable=True, default=0)  # ✅ NOVO: Contador de DCA
     
     # Campos adicionais para historico
     exit_price = Column(Float, nullable=True)
