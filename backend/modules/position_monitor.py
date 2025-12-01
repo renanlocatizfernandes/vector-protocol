@@ -689,6 +689,35 @@ class PositionMonitor:
                 
                 logger.info(f"✅ DCA Executado: Novo Entry {new_entry:.4f}, Qty {total_qty:.4f}")
                 
+                # ================================
+                # ATUALIZAR ORDENS NA BINANCE
+                # ================================
+                try:
+                    # 1. Cancelar ordens antigas
+                    await asyncio.to_thread(self.client.futures_cancel_all_open_orders, symbol=trade.symbol)
+                    
+                    # 2. Colocar novo Stop Loss para o TOTAL
+                    sl_side = 'SELL' if trade.direction == 'LONG' else 'BUY'
+                    sl_price = round_step_size(trade.stop_loss, symbol_info['tick_size'])
+                    
+                    # Verificar preferência de preço de gatilho
+                    working_type = 'MARK_PRICE' if getattr(self.settings, "USE_MARK_PRICE_FOR_STOPS", True) else 'CONTRACT_PRICE'
+
+                    await asyncio.to_thread(
+                        self.client.futures_create_order,
+                        symbol=trade.symbol,
+                        side=sl_side,
+                        type='STOP_MARKET',
+                        stopPrice=sl_price,
+                        quantity=total_qty,
+                        reduceOnly=True,
+                        workingType=working_type
+                    )
+                    logger.info(f"🛡️ Stop Loss atualizado na Binance: {total_qty:.4f} @ {sl_price:.4f}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Falha ao atualizar SL na Binance pós-DCA: {e}")
+                
                 try:
                     await telegram_notifier.send_message(
                         f"📉 DCA Executado: {trade.symbol}\n"

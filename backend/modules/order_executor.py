@@ -372,6 +372,29 @@ class OrderExecutor:
                 return order_result
             
             # ================================
+            # 6.5 CONSOLIDAR ORDENS (Limpeza)
+            # ================================
+            # Cancelar ordens abertas anteriores para evitar acúmulo (especialmente em DCA/Scaling)
+            try:
+                await asyncio.to_thread(self.client.futures_cancel_all_open_orders, symbol=symbol)
+                logger.info(f"🧹 Ordens anteriores canceladas para {symbol} (Consolidação)")
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao cancelar ordens antigas: {e}")
+
+            # Atualizar quantidade para o TOTAL da posição
+            # Isso garante que o SL/TP proteja toda a posição, não apenas o incremento
+            try:
+                risk_info = await binance_client.get_position_risk(symbol)
+                total_qty = abs(float(risk_info.get("positionAmt", 0)))
+                # Só atualiza se encontrou posição e ela é maior que a qtd atual (scaling in)
+                # Se for menor (scaling out?), mantém a lógica original (mas scaling out não deveria entrar aqui)
+                if total_qty > 0:
+                    logger.info(f"🔄 Quantidade ajustada para proteção: {quantity:.4f} -> {total_qty:.4f} (Total da Posição)")
+                    quantity = total_qty
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao obter total da posição, usando qtd da ordem: {e}")
+            
+            # ================================
             # 6. PROTEÇÕES: SL (e opcionalmente TP em batch) + Trailing Stop
             # ================================
             side_opp = 'SELL' if direction == 'LONG' else 'BUY'
