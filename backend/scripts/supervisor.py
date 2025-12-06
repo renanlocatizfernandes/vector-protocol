@@ -44,7 +44,7 @@ import json
 from urllib import request as urlrequest, error as urlerror
 
 # Constantes de paths
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND_DIR = ROOT / "backend"
 VENV_DIR = BACKEND_DIR / ".venv"
 VENV_PYTHON = VENV_DIR / "bin" / "python"

@@ -156,7 +156,14 @@ class Settings(BaseSettings):
     
     class Config:
         # ✅ CORRIGIR: Detectar automaticamente o ambiente
-        env_file = ".env.docker" if os.path.exists("/.dockerenv") else "../.env"
+        # Tenta achar .env no root do repo
+        try:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _env_path = os.path.join(_root, ".env")
+        except:
+            _env_path = ".env"
+        
+        env_file = ".env.docker" if os.path.exists("/.dockerenv") else _env_path
         case_sensitive = True
         extra = "ignore"  # Ignorar variáveis extras
 

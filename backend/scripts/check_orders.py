@@ -3,8 +3,11 @@ import sys
 import os
 
 # Adicionar o diretório atual ao path para importar módulos
-sys.path.append(os.getcwd())
-sys.path.append(os.path.join(os.getcwd(), "backend"))
+# Adicionar o diretório raiz e backend ao path para importar módulos
+import pathlib
+ROOT_DIR = pathlib.Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(ROOT_DIR))
+sys.path.append(str(ROOT_DIR / "backend"))
 
 from backend.utils.binance_client import binance_client
 

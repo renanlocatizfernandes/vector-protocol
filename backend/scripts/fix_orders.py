@@ -2,8 +2,11 @@ import asyncio
 import os
 import sys
 
-# Add backend to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+# Adicionar o diretório raiz e backend ao path para importar módulos
+import pathlib
+ROOT_DIR = pathlib.Path(__file__).resolve().parent.parent.parent
+sys.path.append(str(ROOT_DIR))
+sys.path.append(str(ROOT_DIR / "backend"))
 
 try:
     from backend.utils.binance_client import binance_client
