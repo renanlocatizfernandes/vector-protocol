@@ -15,15 +15,36 @@ export default {
         },
         extend: {
             colors: {
+                dark: {
+                    950: '#0a0a0f', // Main Background
+                    900: '#12121a', // Secondary Background
+                    800: '#1c1c26', // Panels/Cards
+                    700: '#2a2a35', // Borders/Hover
+                },
+                primary: {
+                    DEFAULT: '#00f0ff', // Cyan Neon
+                    hover: '#00c0cc',
+                    dim: 'rgba(0, 240, 255, 0.1)',
+                    foreground: '#000000',
+                },
+                accent: {
+                    DEFAULT: '#7000ff', // Purple Neon
+                    hover: '#5a00cc',
+                    dim: 'rgba(112, 0, 255, 0.1)',
+                    foreground: '#ffffff',
+                },
+                success: '#00ff9d',
+                warning: '#ffb020',
+                danger: '#ff4d4d',
+                text: {
+                    main: '#ffffff',
+                    muted: '#a0a0a0',
+                },
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
                 ring: "hsl(var(--ring))",
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",
-                primary: {
-                    DEFAULT: "hsl(var(--primary))",
-                    foreground: "hsl(var(--primary-foreground))",
-                },
                 secondary: {
                     DEFAULT: "hsl(var(--secondary))",
                     foreground: "hsl(var(--secondary-foreground))",
@@ -35,10 +56,6 @@ export default {
                 muted: {
                     DEFAULT: "hsl(var(--muted))",
                     foreground: "hsl(var(--muted-foreground))",
-                },
-                accent: {
-                    DEFAULT: "hsl(var(--accent))",
-                    foreground: "hsl(var(--accent-foreground))",
                 },
                 popover: {
                     DEFAULT: "hsl(var(--popover))",

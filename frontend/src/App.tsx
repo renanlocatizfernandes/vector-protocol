@@ -3,7 +3,8 @@ import { Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import ConfigBot from "./pages/ConfigBot";
 import Supervisor from "./pages/Supervisor";
-import Metrics from "./pages/Metrics";
+import Positions from "./pages/Positions";
+import Logs from "./pages/Logs";
 import { Layout } from "./components/Layout";
 
 export default function App() {
@@ -11,12 +12,11 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/metrics" element={<Metrics />} />
+        <Route path="/positions" element={<Positions />} />
         <Route path="/config" element={<ConfigBot />} />
         <Route path="/supervisor" element={<Supervisor />} />
-        <Route path="/logs" element={<div className="p-4">Logs Viewer (Coming Soon)</div>} />
+        <Route path="/logs" element={<Logs />} />
       </Routes>
     </Layout>
   );
 }
-

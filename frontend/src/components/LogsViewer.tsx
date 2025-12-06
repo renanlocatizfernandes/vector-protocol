@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getLogs } from "../services/api";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Terminal, Download, Copy, RefreshCw, ArrowDown, Type, AlignLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Preset = {
   label: string;
@@ -25,9 +32,9 @@ export default function LogsViewer({
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const inFlight = useRef<boolean>(false);
   const [component, setComponent] = useState<string>(presets[0]?.value || "api");
-  const [tail, setTail] = useState<number>(300);
+  const [tail, setTail] = useState<string>("300");
   const [autoRefresh, setAutoRefresh] = useState<boolean>(true);
-  const [intervalMs, setIntervalMs] = useState<number>(5000);
+  const [intervalMs, setIntervalMs] = useState<string>("5000");
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,42 +47,38 @@ export default function LogsViewer({
   const [fontSize, setFontSize] = useState<number>(12);
 
   const fetchLogs = async (opts?: { silent?: boolean }) => {
-    if (inFlight.current) return; // evita requisições concorrentes/overlap
+    if (inFlight.current) return;
     inFlight.current = true;
     if (!opts?.silent) setLoading(true);
     setError(null);
     try {
-      const res = await getLogs(component, tail);
+      const res = await getLogs(component, Number(tail));
       setLines(res.lines || []);
       setFile(res.file || "");
       setLastUpdated(Date.now());
-      // Se o usuário não rolou para cima, manter scroll no fim
       if (stickToBottom) {
         requestAnimationFrame(() => {
-          preRef.current?.scrollTo({
-            top: preRef.current.scrollHeight,
-            behavior: "smooth"
-          });
+          if (preRef.current) {
+            preRef.current.scrollTop = preRef.current.scrollHeight;
+          }
         });
       }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || e?.message || "Falha ao carregar logs");
+      setError(e?.response?.data?.detail || e?.message || "Failed to load logs");
     } finally {
       if (!opts?.silent) setLoading(false);
       inFlight.current = false;
     }
   };
 
-  // Auto refresh
   useEffect(() => {
     fetchLogs();
     if (!autoRefresh) return;
     const id = setInterval(() => {
       lastRefetch.current = Date.now();
       fetchLogs({ silent: true });
-    }, Math.max(1000, intervalMs));
+    }, Math.max(1000, Number(intervalMs)));
     return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [component, tail, autoRefresh, intervalMs]);
 
   const lineCount = useMemo(() => lines.length, [lines]);
@@ -83,15 +86,16 @@ export default function LogsViewer({
   const handleScroll = () => {
     if (!preRef.current) return;
     const el = preRef.current;
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 10;
+
+    // Check if scrolled to bottom with a tolerance of 10px
+    const atBottom = Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 20;
     setStickToBottom(atBottom);
   };
 
-  // Utilitários de UX
   const copyLogs = () => {
     const text = lines.join("\n");
     if (!text) return;
-    navigator.clipboard?.writeText(text).catch(() => {});
+    navigator.clipboard?.writeText(text).catch(() => { });
   };
 
   const downloadLogs = () => {
@@ -108,99 +112,133 @@ export default function LogsViewer({
   };
 
   return (
-    <section className="card">
-      <h3>Logs em Tempo Quase Real</h3>
+    <Card className="flex flex-col h-[calc(100vh-140px)] border-primary/20 bg-dark-900/40 backdrop-blur-xl shadow-xl">
+      <CardHeader className="py-4 border-b border-dark-700/50">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <CardTitle className="flex items-center gap-2 text-primary text-lg">
+            <Terminal className="w-5 h-5" /> Live System Logs
+          </CardTitle>
 
-      <div className="row" style={{ gap: 10, alignItems: "center", marginBottom: 8 }}>
-        <div style={{ minWidth: 220 }}>
-          <label>Componente (prefixo do arquivo)</label>
-          <div className="row" style={{ gap: 8 }}>
-            <select value={component} onChange={(e) => setComponent(e.target.value)} style={{ flex: 1 }}>
-              {presets.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
-              ))}
-            </select>
-            <input
-              placeholder="custom"
-              value={component}
-              onChange={(e) => setComponent(e.target.value)}
-              style={{ width: 120 }}
-              title="Prefixo customizado (ex.: api, trading_routes, etc.)"
-            />
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={component} onValueChange={setComponent}>
+              <SelectTrigger className="w-[200px] h-8 text-xs bg-dark-800 border-dark-700">
+                <SelectValue placeholder="Select component" />
+              </SelectTrigger>
+              <SelectContent>
+                {presets.map(p => (
+                  <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                className="w-20 h-8 text-xs bg-dark-800 border-dark-700"
+                placeholder="Tail"
+                value={tail}
+                onChange={(e) => setTail(e.target.value)}
+              />
+              <span className="text-xs text-muted-foreground hidden lg:inline">lines</span>
+            </div>
+
+            <div className="h-6 w-px bg-dark-700 mx-1 hidden lg:block" />
+
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-muted-foreground hover:text-white">
+                <Checkbox
+                  checked={autoRefresh}
+                  onCheckedChange={(c) => setAutoRefresh(!!c)}
+                  className="border-dark-600 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                />
+                Auto
+              </label>
+              {autoRefresh && (
+                <Input
+                  type="number"
+                  className="w-16 h-8 text-xs bg-dark-800 border-dark-700"
+                  value={intervalMs}
+                  onChange={e => setIntervalMs(e.target.value)}
+                  disabled={!autoRefresh}
+                />
+              )}
+              <span className="text-xs text-muted-foreground w-4">ms</span>
+            </div>
           </div>
         </div>
 
-        <div>
-          <label>Tail (linhas)</label>
-          <input
-            type="number"
-            min={50}
-            max={5000}
-            value={tail}
-            onChange={(e) => setTail(Number(e.target.value) || 300)}
-            style={{ width: 120 }}
-          />
-        </div>
+        <div className="flex items-center justify-between mt-4">
+          <div className="text-xs text-muted-foreground font-mono flex items-center gap-2">
+            <span className="text-primary">{file || "Loading..."}</span>
+            <span>•</span>
+            <span>{lineCount} lines</span>
+            <span>•</span>
+            <span>{lastUpdated ? `Updated ${new Date(lastUpdated).toLocaleTimeString()}` : "Waiting..."}</span>
+            {loading && <RefreshCw className="w-3 h-3 animate-spin text-primary" />}
+          </div>
 
-        <div>
-          <label>Auto refresh</label>
-          <div className="row" style={{ alignItems: "center", gap: 8 }}>
-            <input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} />
-            <span className="small">a cada</span>
-            <input
-              type="number"
-              min={1000}
-              step={500}
-              value={intervalMs}
-              onChange={(e) => setIntervalMs(Number(e.target.value) || 5000)}
-              style={{ width: 100 }}
-              disabled={!autoRefresh}
-              title="Intervalo em ms"
-            />
-            <span className="small">ms</span>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={fetchLogs} title="Refresh">
+              <RefreshCw className={cn("w-3 h-3", loading && "animate-spin")} />
+            </Button>
+            <div className="mx-1 h-4 w-px bg-dark-700" />
+            <Button variant="ghost" size="icon" className={cn("h-7 w-7", stickToBottom && "text-primary bg-primary/10")} onClick={() => setStickToBottom(!stickToBottom)} title="Sticky Bottom">
+              <ArrowDown className="w-3 h-3" />
+            </Button>
+            <Button variant="ghost" size="icon" className={cn("h-7 w-7", wrap && "text-primary bg-primary/10")} onClick={() => setWrap(!wrap)} title="Toggle Wrap">
+              <AlignLeft className="w-3 h-3" />
+            </Button>
+            <div className="mx-1 h-4 w-px bg-dark-700" />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFontSize(s => Math.max(10, s - 1))} title="Smaller Font">
+              <Type className="w-3 h-3 scale-75" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setFontSize(s => Math.min(20, s + 1))} title="Larger Font">
+              <Type className="w-4 h-4" />
+            </Button>
+            <div className="mx-1 h-4 w-px bg-dark-700" />
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyLogs} title="Copy">
+              <Copy className="w-3 h-3" />
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={downloadLogs} title="Download">
+              <Download className="w-3 h-3" />
+            </Button>
           </div>
         </div>
-
-        <div className="row" style={{ gap: 8 }}>
-          <button className="btn" onClick={() => fetchLogs()} disabled={loading}>Atualizar</button>
-          <button className="btn ghost" onClick={() => setStickToBottom(true)} title="Fixar no fim do log">Seguir fim</button>
-          <button className="btn ghost" onClick={copyLogs} title="Copiar para a área de transferência">Copiar</button>
-          <button className="btn ghost" onClick={downloadLogs} title="Baixar .log">Baixar</button>
-          <button className="btn ghost" onClick={() => setWrap((w) => !w)} title="Alternar quebra de linha">{wrap ? "No-wrap" : "Wrap"}</button>
-          <div className="row" style={{ gap: 4 }}>
-            <button className="btn ghost" onClick={() => setFontSize((v) => Math.max(10, v - 1))} title="Fonte -">A-</button>
-            <button className="btn ghost" onClick={() => setFontSize((v) => Math.min(18, v + 1))} title="Fonte +">A+</button>
+      </CardHeader>
+      <CardContent className="h-full overflow-hidden p-0 relative">
+        {error && (
+          <div className="absolute top-0 left-0 right-0 bg-red-500/10 text-red-500 text-xs p-2 text-center border-b border-red-500/20 z-10 transition-all">
+            {error}
           </div>
-        </div>
-      </div>
-
-      <div className="small" style={{ marginBottom: 6 }}>
-        Arquivo: {file || "—"} • Linhas: {lineCount} {loading ? "• carregando..." : ""}
-        {lastUpdated ? ` • Atualizado às ${new Date(lastUpdated).toLocaleTimeString()}` : ""}
-      </div>
-
-      {error ? (
-        <div className="badge err">{error}</div>
-      ) : (
+        )}
         <pre
           ref={preRef}
           onScroll={handleScroll}
+          className={cn(
+            "h-full w-full overflow-auto p-4 font-mono scrollbar-hide text-white/90 bg-[#0c0c12]",
+            wrap ? "whitespace-pre-wrap" : "whitespace-pre"
+          )}
           style={{
-            background: "var(--panel-2)",
-            border: "1px solid var(--border)",
-            borderRadius: 10,
-            padding: 12,
-            height: 360,
-            overflow: "auto",
-            whiteSpace: wrap ? "pre-wrap" : "pre",
-            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-            fontSize: fontSize,
-            lineHeight: 1.35
+            fontSize: `${fontSize}px`,
+            lineHeight: '1.5',
           }}
         >
-{lines.join("\n")}
+          {lines.join('\n')}
         </pre>
-      )}
-    </section>
+        {!stickToBottom && (
+          <Button
+            variant="default"
+            size="sm"
+            className="absolute bottom-4 right-8 shadow-lg animate-in fade-in"
+            onClick={() => {
+              setStickToBottom(true);
+              if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
+            }}
+          >
+            <ArrowDown className="mr-2 w-3 h-3" /> Jump to Bottom
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

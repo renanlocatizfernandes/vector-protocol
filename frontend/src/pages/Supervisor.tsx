@@ -13,12 +13,12 @@ import {
   type SupervisorHealth
 } from "../services/api";
 import DockerStatus from "../components/DockerStatus";
-import LogsViewer from "../components/LogsViewer";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Activity, Server, PlayCircle, StopCircle, RefreshCw, Terminal, Power, HeartPulse, Cpu } from "lucide-react";
+import { Shield, Activity, Server, PlayCircle, StopCircle, RefreshCw, Terminal, Power, HeartPulse, Cpu, Zap, Archive } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 export default function Supervisor() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -99,23 +99,27 @@ export default function Supervisor() {
   const botRunning = !!bot?.running;
   const supEnabled = !!sup?.enabled;
 
+  if (loading && !health) {
+    return <div className="animate-pulse h-96 bg-dark-800/50 rounded-xl" />;
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* HERO */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Supervisor</h1>
-          <p className="text-muted-foreground">Automação para manter sua stack saudável e o bot sempre rodando.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">System Supervisor</h1>
+          <p className="text-muted-foreground">Automated health monitoring and process management.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={refreshSup} disabled={supLoading}>
-            <RefreshCw className={cn("mr-2 h-4 w-4", supLoading && "animate-spin")} /> Atualizar
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={refreshSup} disabled={supLoading} className="border-dark-700 hover:bg-dark-800">
+            <RefreshCw className={cn("mr-2 h-4 w-4", supLoading && "animate-spin")} /> Refresh
           </Button>
           <a
             href="/docs"
             target="_blank"
             rel="noreferrer"
-            className={cn(buttonVariants("ghost", "sm"))}
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "text-muted-foreground hover:text-white")}
           >
             Swagger API
           </a>
@@ -123,87 +127,65 @@ export default function Supervisor() {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <Badge variant={apiHealthy ? "success" : "destructive"} className="px-3 py-1 text-sm">
-          API: {health?.status || "—"}
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", apiHealthy ? "text-success bg-success/10" : "text-danger bg-danger/10")}>
+          <Activity className="w-3 h-3 mr-2" /> API: {health?.status || "—"}
         </Badge>
-        <Badge variant="outline" className="px-3 py-1 text-sm">
+        <Badge variant="outline" className="px-3 py-1 text-sm border-dark-700 text-muted-foreground">
           v{health?.version || "—"}
         </Badge>
-        <Badge variant={botRunning ? "success" : "destructive"} className="px-3 py-1 text-sm">
-          Bot: {botRunning ? "Rodando" : "Parado"}
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", botRunning ? "text-success bg-success/10" : "text-muted-foreground")}>
+          <Zap className="w-3 h-3 mr-2" /> Bot: {botRunning ? "Running" : "Stopped"}
         </Badge>
-        <Badge variant={supEnabled ? "success" : "destructive"} className="px-3 py-1 text-sm">
-          Supervisor: {supEnabled ? "Ativado" : "Desativado"}
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", supEnabled ? "text-primary bg-primary/10" : "text-muted-foreground")}>
+          <Shield className="w-3 h-3 mr-2" /> Supervisor: {supEnabled ? "Active" : "Disabled"}
         </Badge>
         {supHealth && (
-          <Badge variant="outline" className="px-3 py-1 text-sm">
+          <Badge variant="outline" className="px-3 py-1 text-sm border-dark-700 text-muted-foreground">
             Restarts: {supHealth.restarts}
           </Badge>
         )}
       </div>
 
-      <div className="flex gap-2">
-        <Button variant="default" className="bg-green-600 hover:bg-green-700" disabled={opBusy} onClick={() => setSupervisor("enable")}>
-          <PlayCircle className="mr-2 h-4 w-4" /> Ativar Supervisor
+      <div className="flex gap-3">
+        <Button
+          className="bg-green-600 hover:bg-green-700 text-white shadow-[0_0_15px_rgba(22,163,74,0.4)]"
+          disabled={opBusy}
+          onClick={() => setSupervisor("enable")}
+        >
+          <PlayCircle className="mr-2 h-4 w-4" /> Enable Supervisor
         </Button>
-        <Button variant="destructive" disabled={opBusy} onClick={() => setSupervisor("disable")}>
-          <StopCircle className="mr-2 h-4 w-4" /> Desativar Supervisor
-        </Button>
-        <Button variant="secondary" disabled={opBusy} onClick={() => setSupervisor("toggle")}>
-          <Power className="mr-2 h-4 w-4" /> Alternar
+        <Button
+          variant="destructive"
+          className="shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+          disabled={opBusy}
+          onClick={() => setSupervisor("disable")}
+        >
+          <StopCircle className="mr-2 h-4 w-4" /> Disable Supervisor
         </Button>
       </div>
 
-      {/* RESUMO RÁPIDO */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" /> Resumo do Sistema
+        {/* Heartbeats */}
+        <Card className="border-primary/20 bg-dark-900/40 backdrop-blur-xl">
+          <CardHeader className="pb-4 border-b border-dark-700/50">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <HeartPulse className="h-5 w-5 text-danger animate-pulse" /> Component Health
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="text-sm text-muted-foreground">Carregando...</div>
-            ) : (
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant={apiHealthy ? "success" : "destructive"}>
-                    API: {health?.status || "—"}
-                  </Badge>
-                  <Badge variant="outline">v{health?.version || "—"}</Badge>
-                  <Badge variant={botRunning ? "success" : "destructive"}>
-                    Bot: {botRunning ? "Rodando" : "Parado"}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Módulos: {health?.modules ? Object.keys(health.modules).join(", ") : "—"}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* NOVO: Heartbeats */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HeartPulse className="h-5 w-5 text-red-500" /> Heartbeats
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {!supHealth ? (
-              <div className="text-sm text-muted-foreground">Sem dados de telemetria</div>
+              <div className="text-sm text-muted-foreground flex flex-col items-center justify-center h-32 opacity-50">
+                <Activity className="w-8 h-8 mb-2" />
+                No telemetry data
+              </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {Object.entries(supHealth.components).map(([comp, data]) => (
-                  <div key={comp} className="flex justify-between items-center text-sm border-b pb-1 last:border-0">
-                    <span className="capitalize">{comp.replace("_loop", "")}</span>
-                    <div className="flex items-center gap-2">
+                  <div key={comp} className="flex justify-between items-center text-sm p-2 rounded-lg bg-dark-800/50 border border-dark-700/30">
+                    <span className="capitalize font-medium text-white">{comp.replace("_loop", "")}</span>
+                    <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">{data.last_heartbeat_ago}</span>
-                      <Badge variant={data.status === "ok" ? "success" : "destructive"} className="h-5 px-1">
-                        {data.status}
-                      </Badge>
+                      <div className={cn("h-2 w-2 rounded-full", data.status === "ok" ? "bg-success shadow-[0_0_8px_rgba(0,255,157,0.6)]" : "bg-danger")} />
                     </div>
                   </div>
                 ))}
@@ -212,38 +194,41 @@ export default function Supervisor() {
           </CardContent>
         </Card>
 
-        {/* NOVO: Recursos */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="h-5 w-5 text-blue-500" /> Recursos
+        {/* Resources */}
+        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
+          <CardHeader className="pb-4 border-b border-dark-700/50">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Cpu className="h-5 w-5 text-bg-blue-500 text-primary" /> System Resources
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             {!supHealth ? (
-              <div className="text-sm text-muted-foreground">Sem dados de recursos</div>
+              <div className="text-sm text-muted-foreground flex flex-col items-center justify-center h-32 opacity-50">
+                <Activity className="w-8 h-8 mb-2" />
+                No resource data
+              </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>CPU Usage</span>
-                    <span>{supHealth.system.cpu_percent.toFixed(1)}%</span>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">CPU Load</span>
+                    <span className="font-mono text-white">{supHealth.system.cpu_percent.toFixed(1)}%</span>
                   </div>
-                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-2 bg-dark-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-blue-500 transition-all duration-500"
+                      className="h-full bg-primary/80 shadow-[0_0_10px_rgba(0,240,255,0.4)] transition-all duration-500"
                       style={{ width: `${Math.min(supHealth.system.cpu_percent, 100)}%` }}
                     />
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span>RAM Usage</span>
-                    <span>{supHealth.system.memory_mb.toFixed(0)} MB</span>
+                  <div className="flex justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">Memory Usage</span>
+                    <span className="font-mono text-white">{supHealth.system.memory_mb.toFixed(0)} MB</span>
                   </div>
-                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-2 bg-dark-800 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-purple-500 transition-all duration-500"
+                      className="h-full bg-accent/80 shadow-[0_0_10px_rgba(112,0,255,0.4)] transition-all duration-500"
                       style={{ width: `${Math.min((supHealth.system.memory_mb / 1024) * 100, 100)}%` }}
                     />
                   </div>
@@ -252,84 +237,56 @@ export default function Supervisor() {
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" /> Supervisor • Detalhes
+        {/* Alerts / Interventions */}
+        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
+          <CardHeader className="pb-4 border-b border-dark-700/50">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Shield className="h-5 w-5 text-warning" /> Interventions
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Badge variant={supEnabled ? "success" : "destructive"}>
-                Status: {supEnabled ? "Ativado" : "Desativado"}
-              </Badge>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Última intervenção: {fmtDate(sup?.last_intervention_at)}
-            </div>
-            <details className="text-sm">
-              <summary className="cursor-pointer text-primary hover:underline">Últimas intervenções</summary>
-              <pre className="mt-2 p-2 bg-muted rounded-md text-xs font-mono overflow-auto max-h-40">
-                {(sup?.interventions_tail || []).join("\n") || "—"}
-              </pre>
-            </details>
-          </CardContent>
-        </Card>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Last Intervention:</span>
+                <span className="font-mono text-white">{fmtDate(sup?.last_intervention_at)}</span>
+              </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Terminal className="h-4 w-4" /> Comandos Úteis
-            </CardTitle>
-            <CardDescription>Execute no diretório raiz do projeto</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs font-mono bg-muted p-3 rounded-md overflow-x-auto whitespace-pre-wrap text-foreground">
-              {`# Preparar ambiente local (opcional)
-python3 supervisor.py ensure-venv
-
-# Subir stack Docker e checar saúde
-python3 supervisor.py up
-
-# Iniciar watchdog (recomendado em produção/dev estável)
-python3 supervisor.py watch \\
-  --interval 60 \\
-  --inactive-mins 120 \\
-  --ensure-running \\
-  --bot-dry-run \\
-  --start-bot
-
-# Logs rápidos do container da API
-python3 supervisor.py logs --name trading-bot-api --tail 200
-
-# Reiniciar somente API
-python3 supervisor.py restart-api --service api
-
-# Parar stack
-python3 supervisor.py down`}
-            </pre>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" /> Infra • Containers e Logs
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <DockerStatus />
-              <LogsViewer />
+              <div className="bg-dark-950 rounded-lg border border-dark-800 p-3 h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-dark-700">
+                <ul className="text-xs font-mono space-y-1 text-muted-foreground">
+                  {(sup?.interventions_tail || []).length > 0 ? (
+                    (sup?.interventions_tail || []).map((line, i) => (
+                      <li key={i} className="border-b border-dark-800/50 pb-1 last:border-0">{line}</li>
+                    ))
+                  ) : (
+                    <li className="italic opacity-50 text-center py-8">No recent interventions</li>
+                  )}
+                </ul>
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Docker Status */}
+      <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
+        <CardHeader className="border-b border-dark-700/50 pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-white">
+              <Server className="h-5 w-5 text-muted-foreground" /> Infrastructure Status
+            </CardTitle>
+            <Link to="/logs">
+              <Button variant="ghost" size="sm" className="text-xs">
+                <Archive className="mr-2 w-3 h-3" /> View System Logs
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-6">
+          <DockerStatus />
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

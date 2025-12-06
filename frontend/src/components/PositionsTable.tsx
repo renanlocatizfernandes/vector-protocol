@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Layers } from 'lucide-react';
+import { RefreshCw, Layers, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const PositionsTable: React.FC = () => {
@@ -24,7 +24,7 @@ export const PositionsTable: React.FC = () => {
 
     useEffect(() => {
         loadData();
-        const interval = setInterval(loadData, 5000); // Atualização mais frequente para posições
+        const interval = setInterval(loadData, 5000);
         return () => clearInterval(interval);
     }, [loadData]);
 
@@ -33,10 +33,10 @@ export const PositionsTable: React.FC = () => {
         setMessage(null);
         try {
             const res = await syncPositions(strict ? { mode: 'strict' } : undefined);
-            setMessage({ type: 'success', text: `Sincronização concluída` });
+            setMessage({ type: 'success', text: `Sync Completed` });
             await loadData();
         } catch (e: any) {
-            setMessage({ type: 'error', text: e?.message || 'Erro ao sincronizar' });
+            setMessage({ type: 'error', text: e?.message || 'Sync Error' });
         } finally {
             setLoading(false);
         }
@@ -86,81 +86,111 @@ export const PositionsTable: React.FC = () => {
     const rows = agg ? aggRows : (data?.open_trades || []);
 
     return (
-        <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-dark-700/50">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    <Layers className="h-5 w-5 text-primary" /> Posições Abertas
+                    <Layers className="h-5 w-5 text-primary" /> Open Positions
                 </CardTitle>
                 <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors">
+                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none text-muted-foreground hover:text-white transition-colors p-2 rounded-md hover:bg-dark-800">
                         <input
                             type="checkbox"
                             checked={agg}
                             onChange={e => setAgg(e.target.checked)}
-                            className="rounded border-input bg-background text-primary focus:ring-primary"
+                            className="rounded border-dark-600 bg-dark-800 text-primary focus:ring-primary h-4 w-4"
                         />
-                        Agrupar por Símbolo
+                        <Filter className="w-3 h-3" /> Group by Symbol
                     </label>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={loading}>
+                        <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={loading} className="h-8 text-xs border-dark-600 hover:bg-dark-800">
                             <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Sync
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleSync(true)} disabled={loading}>
-                            <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Sync (Strict)
+                        <Button variant="outline" size="sm" onClick={() => handleSync(true)} disabled={loading} className="h-8 text-xs border-dark-600 hover:bg-dark-800">
+                            <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Strict Sync
                         </Button>
                     </div>
                 </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
                 {message && (
                     <div className={cn(
-                        "mb-4 p-2 rounded text-sm font-medium text-center",
-                        message.type === 'success' ? "bg-green-500/15 text-green-500" : "bg-red-500/15 text-red-500"
+                        "m-4 p-2 rounded text-sm font-medium text-center border",
+                        message.type === 'success'
+                            ? "bg-green-500/10 text-green-500 border-green-500/20"
+                            : "bg-red-500/10 text-red-500 border-red-500/20"
                     )}>
                         {message.text}
                     </div>
                 )}
 
-                <div className="rounded-md border">
+                <div className="rounded-none border-0">
                     <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Símbolo</TableHead>
-                                <TableHead>Direção</TableHead>
-                                <TableHead>Entrada</TableHead>
-                                <TableHead>Qtd</TableHead>
-                                <TableHead>PNL (USDT)</TableHead>
-                                <TableHead>PNL %</TableHead>
-                                <TableHead>Aberto em</TableHead>
+                        <TableHeader className="bg-dark-800/50">
+                            <TableRow className="border-dark-700/50 hover:bg-transparent">
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Symbol</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Direction</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Entry Price</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Qty</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">PnL (USDT)</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">PnL %</TableHead>
+                                <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Time</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {rows.length > 0 ? (
                                 rows.map((row: any) => (
-                                    <TableRow key={row.id}>
-                                        <TableCell className="font-mono font-bold">{row.symbol}</TableCell>
+                                    <TableRow key={row.id} className="border-dark-700/50 hover:bg-dark-800/50 transition-colors">
+                                        <TableCell className="font-mono font-bold text-white flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full bg-dark-800 flex items-center justify-center text-[10px] text-muted-foreground">
+                                                Coin
+                                            </div>
+                                            {row.symbol}
+                                        </TableCell>
                                         <TableCell>
-                                            <Badge variant={row.direction === 'LONG' ? 'success' : 'destructive'}>
+                                            <Badge variant="outline" className={cn(
+                                                "font-mono text-[10px] px-2 py-0.5 border-0",
+                                                row.direction === 'LONG'
+                                                    ? "bg-success/15 text-success ring-1 ring-success/20"
+                                                    : "bg-danger/15 text-danger ring-1 ring-danger/20"
+                                            )}>
                                                 {row.direction}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="font-mono">{Number(row.entry_price).toFixed(4)}</TableCell>
-                                        <TableCell className="font-mono">{Number(row.quantity).toFixed(4)}</TableCell>
-                                        <TableCell className={cn("font-mono font-bold", row.pnl >= 0 ? 'text-green-500' : 'text-red-500')}>
-                                            {row.pnl ? row.pnl.toFixed(2) : '—'}
+                                        <TableCell className="font-mono text-right text-muted-foreground">
+                                            ${Number(row.entry_price).toFixed(4)}
                                         </TableCell>
-                                        <TableCell className={cn("font-mono", row.pnl_percentage >= 0 ? 'text-green-500' : 'text-red-500')}>
-                                            {row.pnl_percentage ? row.pnl_percentage.toFixed(2) : '—'}%
+                                        <TableCell className="font-mono text-right text-muted-foreground">
+                                            {Number(row.quantity).toFixed(4)}
                                         </TableCell>
-                                        <TableCell className="text-xs text-muted-foreground">
-                                            {row.opened_at ? new Date(row.opened_at).toLocaleString() : '—'}
+                                        <TableCell className="text-right">
+                                            <span className={cn(
+                                                "font-mono font-bold block",
+                                                row.pnl >= 0 ? 'text-success' : 'text-danger'
+                                            )}>
+                                                {row.pnl ? (row.pnl >= 0 ? '+' : '') + row.pnl.toFixed(2) : '—'}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className={cn(
+                                                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium",
+                                                row.pnl_percentage >= 0 ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'
+                                            )}>
+                                                {row.pnl_percentage >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                                                {row.pnl_percentage ? Math.abs(row.pnl_percentage).toFixed(2) : '0.00'}%
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-xs text-muted-foreground text-right font-mono">
+                                            {row.opened_at ? new Date(row.opened_at).toLocaleTimeString() : '—'}
                                         </TableCell>
                                     </TableRow>
                                 ))
                             ) : (
-                                <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                        Nenhuma posição aberta no momento.
+                                <TableRow className="hover:bg-transparent">
+                                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                                        <div className="flex flex-col items-center gap-2 opacity-50">
+                                            <Layers className="w-8 h-8" />
+                                            <span>No active positions</span>
+                                        </div>
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -169,9 +199,20 @@ export const PositionsTable: React.FC = () => {
                 </div>
 
                 {/* Footer Stats */}
-                <div className="mt-4 pt-4 border-t flex gap-6 text-sm text-muted-foreground">
-                    <div>Exposição Total: <span className="text-foreground font-mono">{data?.portfolio?.exposure_total || '0.00'}</span></div>
-                    <div>Unrealized PnL: <span className={cn("font-mono", data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-green-500' : 'text-red-500')}>{data?.portfolio?.unrealized_pnl_total || '0.00'}</span></div>
+                <div className="bg-dark-900/50 p-4 border-t border-dark-700/50 flex flex-wrap gap-6 text-sm">
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground uppercase">Total Exposure</span>
+                        <span className="font-mono text-white font-bold">${data?.portfolio?.exposure_total || '0.00'}</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-xs text-muted-foreground uppercase">Unrealized PnL</span>
+                        <span className={cn(
+                            "font-mono font-bold text-lg",
+                            data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-success drop-shadow-[0_0_8px_rgba(0,255,157,0.3)]' : 'text-danger drop-shadow-[0_0_8px_rgba(255,77,77,0.3)]'
+                        )}>
+                            {data?.portfolio?.unrealized_pnl_total ? (data?.portfolio?.unrealized_pnl_total >= 0 ? '+' : '') + data?.portfolio?.unrealized_pnl_total : '0.00'}
+                        </span>
+                    </div>
                 </div>
             </CardContent>
         </Card>

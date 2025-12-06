@@ -12,7 +12,7 @@ const API_BASE = USE_ENV_BASE ? String(RAW_BASE).trim() : "";
 // Axios instance com timeout menor e fallback para same-origin quando VITE_API_BASE falhar
 export const http = axios.create({
   baseURL: API_BASE,
-  timeout: 10000
+  timeout: 5000
 });
 
 // Fallback automático: se baseURL via VITE_API_BASE falhar por timeout ou Network Error, tenta same-origin (proxy) uma única vez
