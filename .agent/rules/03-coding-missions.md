@@ -1,16 +1,19 @@
-# Rule: Coding Missions
+---
+description: "Workflow for coding missions."
+globs: "src/**/*, backend/**/*, frontend/**/*"
+---
 
-**Phase**: Execution
+# Coding Mission
 
-When writing code:
+When asked to write code:
 
-1. **Plan**: Create/Update `implementation_plan.md`.
-2. **Guidelines**: Follow `.ai/agent-guidelines.md`.
-3. **Tests**:
-   - Locate existing tests in `backend/tests/`.
-   - Run tests before and after changes.
-   - If no tests exist for the feature, create them.
-4. **Changelog**:
-   - Prepare a note for `docs/CHANGELOG.md`.
-5. **Specs**:
-   - Link your implementation to a SPEC in `/specs`.
+1. **Plan**: Create/Update `implementation_plan.md` if complex.
+2. **Spec**: If it's a feature, find the Spec in `specs/SPEC_INDEX.md`.
+3. **Execute**:
+   - Write code.
+   - Use `docs/CHANGE-MAP.md` to check dependencies.
+4. **Verify**:
+   - Run tests.
+   - Or request user verification.
+5. **Document**:
+   - Update `docs/CHANGELOG.md`.

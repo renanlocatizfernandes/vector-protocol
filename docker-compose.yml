@@ -43,7 +43,7 @@ services:
     env_file:
       - .env.docker
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./backend:/app
       - ./logs:/logs
@@ -63,7 +63,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: http://localhost:8000
+        VITE_API_BASE: http://localhost:8001
     container_name: trading-bot-frontend
     ports:
       - "3000:80"

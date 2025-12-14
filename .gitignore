@@ -30,6 +30,5 @@ dist/
 build/
 .DS_Store
 
-# Antigravity
-!.agent/
+
 

@@ -1,6 +1,6 @@
 # Feature Specification: [Feature Name]
 
-**ID**: FEAT-XXX
+**ID**: SPEC-XXX (Reserve in [SPEC_INDEX.md](SPEC_INDEX.md))
 **Status**: DRAFT | REVIEW | APPROVED
 **Author**: [Name]
 

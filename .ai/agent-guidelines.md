@@ -5,10 +5,10 @@ Directives for Large Language Models working on this repository.
 ## Golden Rules
 
 1. **First, Read**: Before generating code, read:
-   - `README.md`
+   - `project-knowledge.md` (Root Context)
    - `.ai/context-map.md`
-   - `docs/ARCHITECTURE.md`
-   - `docs/GOVERNANCE.md`
+   - `.ai/safety-profile.md` (Security Boundaries)
+   - `.ai/focus-modules.md` (Navigation)
 
 2. **Plan First**: Never start coding without a plan. For complex features, create a plan in `implementation_plan.md` or similar.
 

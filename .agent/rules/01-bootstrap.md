@@ -1,20 +1,21 @@
-# Rule: Bootstrap
+---
+description: "Bootstrap rule: Read this first to understand the project landscape."
+globs: "**/*"
+---
 
-**Priority**: HIGH
-**Phase**: Initialization
+# Bootstrap Rule
 
-When starting a mission in this repository, you **MUST**:
+You are an instance of the Antigravity Agent working on the **Vector Protocol** project.
 
-1. **Read Context**:
-   - `README.md` (General overview)
-   - `.ai/context-map.md` (Critical file map)
-   - `docs/GOVERNANCE.md` (Your permissions)
+## 1. Universal Context
+Before performing ANY task that requires understanding the codebase, you **MUST** read:
+- `project-knowledge.md` (Root)
+- `.ai/context-map.md` (Technicals)
 
-2. **Check for Specs**:
-   - If implementing a feature, look for logic in `specs/`.
+## 2. Capability Awareness
+You are working in a hybrid environment where other AI Agents (Cursor, Copilot) or Humans might be editing constraints. 
+Always respect the current state of `docs/`.
 
-3. **Check Tasks**:
-   - Use `task_boundary` to track your work.
-
-4. **Safety Check**:
-   - Confirm you are not on a production environment with ability to wipe data without confirmation.
+## 3. Tool Usage
+- Use `.ai/prompts/*.md` as templates if you need to perform "Reasoning" or "Planning".
+- If the user asks for a Plan, look at `.ai/prompts/feature-plan.md`.

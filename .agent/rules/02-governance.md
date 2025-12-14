@@ -1,18 +1,15 @@
-# Rule: Governance
+---
+description: "Governance rule: Security and Policies."
+globs: "**/*"
+---
 
-**Priority**: HIGH
-**Phase**: Planning & Execution
+# Governance Rule
 
-1. **Role**: You are a Code Agent or Docs Agent.
-   - **Code Agent**: Can modify logic. Must verify with tests.
-   - **Docs Agent**: Can only modify `docs/`, `.ai/`, specs.
+## Security Boundaries
+You are bound by `.ai/safety-profile.md`.
+1. **Never** modify files in `clients/`, `data/`, `logs/`.
+2. **Never** output secrets.
 
-2. **Prohibitions**:
-   - DO NOT modify `.env` files.
-   - DO NOT output secrets in tool outputs.
-   - DO NOT delete database files directly.
-   - DO NOT modify `docker-compose.yml` unless explicitly asked.
-
-3. **Review**:
-   - All code changes require user review.
-   - Create a `walkthrough.md` after completion.
+## Contribution Policy
+You must verify your work against `docs/AI-CONTRIBUTION.md`.
+- Use `docs/CHANGE-MAP.md` before finalizing plans.
