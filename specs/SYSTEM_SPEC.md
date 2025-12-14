@@ -1,5 +1,9 @@
 # System Specification
 
+> **ID**: SPEC-000
+> **Registry**: [SPEC_INDEX.md](SPEC_INDEX.md)
+
+
 ## 1. System Overview
 The **Antigravity Crypto Trading Bot** is an automated trading system for Binance Futures. It aims to generate profit by executing algorithmic strategies (Trend Following, Mean Reversion) while strictly managing risk.
 

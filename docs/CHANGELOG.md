@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.ai/` directory with agent guidelines and context map.
 - `/specs` directory for feature specifications.
 - `.agent/rules` for Antigravity IDE support.
+- `project-knowledge.md` (Root Context).
+- `.ai/focus-modules.md` and `.ai/safety-profile.md`.
+- `specs/SPEC_INDEX.md`.
+- `docs/AI-CONTRIBUTION.md` and `docs/CHANGE-MAP.md`.
+- Updated `.agent/rules/` with bootstrap/governance rules.
 - `docs/GOVERNANCE.md`, `docs/RUNBOOK.md`, `docs/VERSIONING.md`.
 
 ### Changed

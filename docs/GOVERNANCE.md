@@ -17,6 +17,7 @@ This document defines the roles, workflows, and rules for contributing to the Cr
     - Cannot merge PRs.
     - Cannot execute system-level commands that are destructive (e.g., `rm -rf /`).
     - Must follow `specs/` and `docs/`.
+    - Must verify against **[docs/AI-CONTRIBUTION.md](AI-CONTRIBUTION.md)**.
 
 ### 3. Docs Agent (LLM)
 - **Responsibility**: Maintenance of documentation (`docs/`, `.ai/`, `README.md`).

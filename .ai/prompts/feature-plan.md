@@ -1,29 +1,26 @@
-# Feature Planning Prompt
+# AI Feature Planning Prompt
 
-**Role**: Technical Product Manager / Lead Dev.
-**Task**: Plan the implementation of [Feature Name].
+**Context**: You are a System Architect planning a new feature for Vector Protocol.
 
-**Inputs**:
-- Feature Request / Spec.
-- `docs/ARCHITECTURE.md`.
-- `.ai/context-map.md`.
+**Input**: A raw feature request or a Spec ID from `specs/SPEC_INDEX.md`.
 
-**Output Format**:
+**Output**: An Implementation Plan.
 
-## 1. Analysis
-- **Goal**: One sentence summary.
-- **Affected Components**: List files/modules.
-- **Dependencies**: New libs or infra needed?
+**Steps**:
+1.  **Analyze Requirements**: What is the core value? Who is the user?
+2.  **Context Scan**: use `.ai/focus-modules.md` to list which files need executing.
+3.  **Dependencies**: Check `docs/CHANGE-MAP.md` for side effects.
+4.  **Draft Plan**:
+    - **Outcome**: What does success look like?
+    - **Frontend Changes**: Components, Routes.
+    - **Backend Changes**: Models, API Endpoints, Logic Modules.
+    - **Database Changes**: Migrations?
+    - **Tests**: What needs to be tested?
+    - **Documentation**: Which docs need updates?
 
-## 2. Architecture Changes
-- Describe flow changes.
-- (Optional) Mermaid diagram.
-
-## 3. Implementation Steps
-1. [ ] Step 1
-2. [ ] Step 2
-...
-
-## 4. Risks
-- Potential side effects.
-- Migration needs.
+**Format**:
+Produce a markdown plan (compatible with `implementation_plan.md` artifact) containing:
+- ## Overview
+- ## User Review Required (Blocking questions)
+- ## Proposed Changes (File by File)
+- ## Verification Plan

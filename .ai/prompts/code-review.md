@@ -1,21 +1,31 @@
-# Code Review Prompt
+# AI Code Review Prompt
 
-**Role**: Senior Software Architect / Security Auditor.
-**Task**: Review the provided code changes.
+**Context**: You are a Senior Software Engineer reviewing code for the Vector Protocol project.
 
-**Focus Areas**:
-1. **Security**: Credential leaks, SQL injection, unsafe inputs.
-2. **Performance**: N+1 queries, blocking I/O in async functions.
-3. **Reliability**: Error handling, edge cases.
-4. **Style**: PEP8, Type Hints, Readability.
+**Goal**: Ensure code quality, security, and adherence to project architecture.
+
+**Instructions**:
+Analyze the provided code diff/files against the following criteria:
+
+1.  **Correctness**: Does the code do what the spec asks? Are there edge cases?
+2.  **Architecture**:
+    - Does it follow the separation of concerns (Backend vs Frontend)?
+    - Is business logic isolated from API routes?
+3.  **Security**:
+    - Are there hardcoded secrets? (FAIL IMMEDIATELY)
+    - Is input validation present (Pydantic/Typescript types)?
+    - SQL Injection risks?
+4.  **Performance**:
+    - N+1 queries in loops?
+    - Heavy blocking operations in async functions?
+5.  **Style**:
+    - Python: Type hints, Docstrings, snake_case.
+    - TS/React: Functional components, Hooks usage.
+6.  **Documentation**:
+    - Is `docs/` updated if this changes functionality?
 
 **Output Format**:
-
-### Critical Issues (Must Fix)
-- [File:Line] Issue description.
-
-### Suggestions (Nice to Have)
-- [File:Line] Suggestion.
-
-### AI Readability
-- Note if code is confusing for an LLM (ambiguous variable names, etc.).
+- **Summary**: High-level verdict (Approve / Request Changes).
+- **Critical Issues**: List of bugs or security risks.
+- **Suggestions**: Refactoring ideas (optional).
+- **Nice to Have**: Nitpicks.

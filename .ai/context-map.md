@@ -14,6 +14,8 @@ This file maps the repository structure, identifying critical modules, entry poi
 | `database/` | Data | High | Database migrations and seeds. |
 | `docs/` | Ops | Low | Project documentation. |
 | `.ai/` | Meta | Medium | AI tools, prompts, and context. |
+| `.ai/focus-modules.md` | Guide | High | Map of domains to files. |
+| `.ai/safety-profile.md` | Security | **Critical** | Do's and Don'ts. |
 | `specs/` | Meta | High | Feature specifications. |
 
 ## Critical Entry Points
