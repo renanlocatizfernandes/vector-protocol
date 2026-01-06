@@ -313,6 +313,10 @@ class ProfitOptimizer:
                     tp_price = entry_price + tp_price_offset
                 else:  # SHORT
                     tp_price = entry_price - tp_price_offset
+                    # Guard against negative price for SHORTs (e.g. high volatility/ATR)
+                    if tp_price <= 0:
+                        logger.warning(f"{symbol}: Calculated TP {tp_price} <= 0. clamping to 0.0001 (ATR={base_atr})")
+                        tp_price = max(entry_price * 0.01, 0.00000001)  # 1% of entry as floor
 
                 tp_qty = quantity * (pct / 100)
 

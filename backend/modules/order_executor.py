@@ -1284,7 +1284,6 @@ class OrderExecutor:
                 "type": "STOP_MARKET",
                 "stopPrice": stop_price,
                 "quantity": quantity,
-                "timeInForce": "GTC",
                 "workingType": workingType
             }
             if position_side:
@@ -1386,7 +1385,6 @@ class OrderExecutor:
                 "side": side,
                 "type": "TRAILING_STOP_MARKET",
                 "callbackRate": callback_rate,
-                "timeInForce": "GTC",
                 "workingType": workingType,
                 "quantity": quantity
             }
