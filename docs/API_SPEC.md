@@ -3,7 +3,7 @@
 Este documento descreve os endpoints expostos pelo backend (FastAPI) após as modernizações P1, P2 e P3, incluindo flags runtime de execução e rotas administrativas.
 
 Base URL (dev)
-- API (Uvicorn em Docker): http://localhost:8000
+- API (Uvicorn em Docker): http://localhost:8000 (ou API_PORT_HOST)
 - Frontend (Vite dev): http://localhost:5173 (proxy para /api, /health, /version, /docs → :8000)
 
 Autenticação

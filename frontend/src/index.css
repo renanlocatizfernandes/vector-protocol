@@ -17,8 +17,12 @@
         --popover-foreground: 0 0% 100%;
 
         --primary: 184 100% 50%;
-        /* #00f0ff */
+        /* #00f0ff - Cyan */
         --primary-foreground: 240 10% 4%;
+        --primary-light: 184 100% 65%;
+        /* Lighter cyan */
+        --primary-dark: 184 100% 35%;
+        /* Darker cyan */
 
         --secondary: 240 6% 15%;
         /* dark-800 roughly */
@@ -28,8 +32,12 @@
         --muted-foreground: 240 5% 65%;
 
         --accent: 266 100% 50%;
-        /* #7000ff */
+        /* #7000ff - Purple */
         --accent-foreground: 0 0% 100%;
+        --accent-light: 280 100% 65%;
+        /* Lighter purple/magenta */
+        --accent-dark: 266 100% 35%;
+        /* Darker purple */
 
         --destructive: 0 63% 31%;
         --destructive-foreground: 210 40% 98%;
@@ -39,6 +47,14 @@
         --ring: 184 100% 50%;
 
         --radius: 0.5rem;
+
+        /* Gradient stops for vibrant effects */
+        --gradient-start: 266 100% 50%;
+        /* Purple */
+        --gradient-mid: 280 100% 60%;
+        /* Magenta */
+        --gradient-end: 184 100% 50%;
+        /* Cyan */
     }
 
     .dark {
@@ -53,6 +69,8 @@
 
         --primary: 184 100% 50%;
         --primary-foreground: 240 10% 4%;
+        --primary-light: 184 100% 65%;
+        --primary-dark: 184 100% 35%;
 
         --secondary: 240 6% 15%;
         --secondary-foreground: 0 0% 100%;
@@ -62,6 +80,8 @@
 
         --accent: 266 100% 50%;
         --accent-foreground: 0 0% 100%;
+        --accent-light: 280 100% 65%;
+        --accent-dark: 266 100% 35%;
 
         --destructive: 0 62.8% 30.6%;
         --destructive-foreground: 210 40% 98%;
@@ -69,6 +89,10 @@
         --border: 240 6% 20%;
         --input: 240 6% 20%;
         --ring: 184 100% 50%;
+
+        --gradient-start: 266 100% 50%;
+        --gradient-mid: 280 100% 60%;
+        --gradient-end: 184 100% 50%;
     }
 
     body {
@@ -77,22 +101,98 @@
 }
 
 @layer utilities {
+
+    /* Enhanced Glass Effects */
     .glass-panel {
-        @apply bg-dark-900/60 backdrop-blur-md border border-dark-700/50 shadow-xl;
+        @apply bg-dark-900/60 backdrop-blur-xl border border-dark-700/50 shadow-2xl;
+        background: linear-gradient(135deg, rgba(18, 18, 26, 0.7) 0%, rgba(28, 28, 38, 0.5) 100%);
     }
 
     .glass-button {
         @apply bg-dark-800/80 hover:bg-dark-700 border border-dark-700/50 backdrop-blur-sm transition-all duration-300;
     }
 
+    .glass-card {
+        @apply bg-dark-800/40 backdrop-blur-lg border border-dark-700/30 shadow-xl;
+        background: linear-gradient(135deg, rgba(28, 28, 38, 0.5) 0%, rgba(18, 18, 26, 0.6) 100%);
+    }
+
+    /* Vibrant Gradients */
+    .gradient-primary {
+        background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
+    }
+
+    .gradient-accent {
+        background: linear-gradient(135deg, hsl(var(--accent-light)) 0%, hsl(var(--accent)) 50%, hsl(var(--accent-dark)) 100%);
+    }
+
+    .gradient-cyber {
+        background: linear-gradient(135deg, #7000ff 0%, #a855f7 25%, #06b6d4 75%, #00f0ff 100%);
+    }
+
+    .gradient-border {
+        position: relative;
+        background: linear-gradient(135deg, rgba(112, 0, 255, 0.2) 0%, rgba(0, 240, 255, 0.2) 100%);
+        border: 1px solid transparent;
+    }
+
+    .gradient-border::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(135deg, #7000ff 0%, #00f0ff 100%);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+    }
+
+    /* Glow Effects */
     .text-glow {
-        text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+        text-shadow: 0 0 20px rgba(0, 240, 255, 0.6), 0 0 40px rgba(0, 240, 255, 0.3);
+    }
+
+    .text-glow-purple {
+        text-shadow: 0 0 20px rgba(112, 0, 255, 0.6), 0 0 40px rgba(112, 0, 255, 0.3);
     }
 
     .border-glow {
-        box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+        box-shadow: 0 0 15px rgba(0, 240, 255, 0.3), 0 0 30px rgba(0, 240, 255, 0.1);
     }
 
+    .border-glow-purple {
+        box-shadow: 0 0 15px rgba(112, 0, 255, 0.3), 0 0 30px rgba(112, 0, 255, 0.1);
+    }
+
+    .card-glow {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 240, 255, 0.1);
+    }
+
+    .card-glow-hover {
+        transition: all 0.3s ease;
+    }
+
+    .card-glow-hover:hover {
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5), 0 0 30px rgba(0, 240, 255, 0.2), 0 0 60px rgba(112, 0, 255, 0.1);
+        transform: translateY(-2px);
+    }
+
+    /* Animations */
+    .animate-fade-in {
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    .animate-slide-up {
+        animation: slideUp 0.6s ease-out;
+    }
+
+    .animate-glow-pulse {
+        animation: glowPulse 2s ease-in-out infinite;
+    }
+
+    /* Scrollbar */
     .scrollbar-hide::-webkit-scrollbar {
         display: none;
     }
@@ -101,18 +201,66 @@
         -ms-overflow-style: none;
         scrollbar-width: none;
     }
+
+    /* Smooth Transitions */
+    .transition-smooth {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+}
+
+/* Keyframe Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes glowPulse {
+
+    0%,
+    100% {
+        box-shadow: 0 0 15px rgba(0, 240, 255, 0.3), 0 0 30px rgba(0, 240, 255, 0.1);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(0, 240, 255, 0.5), 0 0 50px rgba(0, 240, 255, 0.2);
+    }
 }
 
 /* Custom Scrollbar for Webkit */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
     @apply bg-dark-950;
+    border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-    @apply bg-dark-700 rounded-full hover:bg-dark-600;
+    background: linear-gradient(135deg, hsl(var(--accent)) 0%, hsl(var(--primary)) 100%);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, hsl(var(--accent-light)) 0%, hsl(var(--primary-light)) 100%);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
 }

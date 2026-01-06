@@ -1,10 +1,10 @@
 """
-Risk Calculator - PROFESSIONAL VERSION v3.0
-🔴 CORREÇÃO CRÍTICA #3: Limite total de capital em 60% (antes 80%)
-✅ Margem máxima por posição: 6% (antes 8%)
-✅ Stop loss cap de 8% máximo (independente do ATR)
+Risk Calculator - PROFESSIONAL VERSION v4.0
+🎯 OTIMIZADO PARA CONTAS PEQUENAS (70 USDT+)
+✅ Margem máxima por posição: 30% (para 2-3 posições maiores)
+✅ Stop loss DINÂMICO baseado em ATR + Performance + Volatilidade
+✅ Ajuste inteligente: tighter stops em winning streaks, wider em losses
 ✅ Validação de correlação no cálculo de margem
-✅ Ajuste dinâmico baseado em performance recente
 """
 import asyncio
 from typing import Dict, List
@@ -18,27 +18,93 @@ class RiskCalculator:
     def __init__(self):
         self.client = binance_client.client
         
-        # 🔴 CORREÇÃO CRÍTICA #3: Margem reduzida
-        self.max_margin_per_position = 0.10  # 10% max por posição (ajuste p/ permitir mais posições)
-        self.min_margin_per_position = 0.06  # Piso mínimo 6% para viabilizar 10+ posições com saldo disponível
-        self.pyramiding_reserve = 0.20  # 20% de reserva para pyramiding
+        # 🎯 OTIMIZADO PARA CONTAS PEQUENAS (70 USDT)
+        # Com poucas posições, cada uma pode ser maior
+        self.max_margin_per_position = 0.30  # 30% max = ~21 USDT com 70 USDT
+        self.min_margin_per_position = 0.15  # 15% min = ~10.5 USDT com 70 USDT
+        self.pyramiding_reserve = 0.10  # 10% reserva = ~7 USDT
         
-        # ✅ NOVO: Limite global de capital
-        self.max_total_capital_usage = 0.95  # 95% máximo em uso (libera 10+ posições)
+        # Limite global de capital
+        self.max_total_capital_usage = 0.90  # 90% máximo em uso
         
-        # ✅ NOVO: Stop loss cap
-        self.max_stop_loss_pct = 8.0  # 8% máximo de stop loss
+        # 🎯 STOP LOSS DINÂMICO
+        # Base 10% com ajustes:
+        # - Winning streak: reduce para 6-8% (proteger lucros)
+        # - Losing streak: aumenta para 12-15% (dar espaço para recuperar)
+        # - Alta volatilidade: aumenta baseado em ATR
+        self.base_stop_loss_pct = 10.0  # 10% base (usuário escolheu)
+        self.max_stop_loss_pct = 15.0   # 15% máximo absoluto
+        self.min_stop_loss_pct = 5.0    # 5% mínimo (sempre ter proteção)
         
-        # ✅ NOVO: Performance tracking
+        # Performance tracking para stop dinâmico
         self.recent_win_rate = 0.0
         self.consecutive_wins = 0
         self.consecutive_losses = 0
         
-        logger.info("✅ Risk Calculator PROFISSIONAL v3.0 inicializado")
+        logger.info("✅ Risk Calculator v4.0 - AGRESSIVO (70 USDT)")
         logger.info(f"📊 Margem máxima por posição: {self.max_margin_per_position*100:.0f}%")
         logger.info(f"💰 Reserva para pyramiding: {self.pyramiding_reserve*100:.0f}%")
         logger.info(f"🔴 Limite TOTAL de capital: {self.max_total_capital_usage*100:.0f}%")
-        logger.info(f"🛑 Stop loss cap: {self.max_stop_loss_pct}%")
+        logger.info(f"🛑 Stop loss DINÂMICO: {self.min_stop_loss_pct}% - {self.max_stop_loss_pct}% (base {self.base_stop_loss_pct}%)")
+    
+    def calculate_dynamic_stop_loss(self, atr_pct: float = 0.0) -> float:
+        """
+        🎯 NOVO v4.0: Calcula stop loss dinâmico baseado em:
+        - Performance recente (wins/losses)
+        - Volatilidade (ATR)
+        - Win rate geral
+        
+        Returns: stop loss % (ex: 8.5 para 8.5%)
+        """
+        
+        # Começar com base de 10%
+        dynamic_sl = self.base_stop_loss_pct
+        
+        # === AJUSTE POR PERFORMANCE (STREAK) ===
+        
+        # Winning streak: apertar stop (proteger lucros)
+        if self.consecutive_wins >= 5:
+            dynamic_sl *= 0.6  # -40% → ~6%
+            logger.debug(f"🔥 5+ wins seguidos: Stop apertado para {dynamic_sl:.1f}%")
+        elif self.consecutive_wins >= 3:
+            dynamic_sl *= 0.75  # -25% → ~7.5%
+            logger.debug(f"✅ 3+ wins seguidos: Stop apertado para {dynamic_sl:.1f}%")
+        
+        # Losing streak: dar mais espaço (evitar whipsaw)
+        elif self.consecutive_losses >= 3:
+            dynamic_sl *= 1.4  # +40% → ~14%
+            logger.debug(f"⚠️ 3+ losses seguidos: Stop ampliado para {dynamic_sl:.1f}%")
+        elif self.consecutive_losses >= 2:
+            dynamic_sl *= 1.2  # +20% → ~12%
+            logger.debug(f"⚠️ 2+ losses seguidos: Stop ampliado para {dynamic_sl:.1f}%")
+        
+        # === AJUSTE POR WIN RATE ===
+        
+        if self.recent_win_rate > 0.70:  # > 70% win rate
+            dynamic_sl *= 0.85  # Pode arriscar menos
+        elif self.recent_win_rate < 0.40:  # < 40% win rate
+            dynamic_sl *= 1.15  # Precisa de mais margem
+        
+        # === AJUSTE POR VOLATILIDADE (ATR) ===
+        
+        if atr_pct > 0:
+            # Se ATR alto (> 3%), aumentar stop proporcionalmente
+            if atr_pct > 3.0:
+                volatility_mult = min(1.5, 1 + (atr_pct - 3.0) / 5.0)
+                dynamic_sl *= volatility_mult
+                logger.debug(f"📊 Alta volatilidade (ATR {atr_pct:.1f}%): Stop ajustado x{volatility_mult:.2f}")
+        
+        # === LIMITES ABSOLUTOS ===
+        
+        dynamic_sl = max(self.min_stop_loss_pct, min(self.max_stop_loss_pct, dynamic_sl))
+        
+        logger.info(
+            f"🎯 Stop Loss Dinâmico: {dynamic_sl:.1f}% "
+            f"(wins: {self.consecutive_wins}, losses: {self.consecutive_losses}, "
+            f"win_rate: {self.recent_win_rate*100:.0f}%)"
+        )
+        
+        return dynamic_sl
     
     def calculate_position_size(
         self,
@@ -56,6 +122,16 @@ class RiskCalculator:
         """
         
         try:
+            if account_balance <= 0:
+                return {
+                    'approved': False,
+                    'reason': 'Saldo indisponível para cálculo de risco'
+                }
+            if entry_price <= 0:
+                return {
+                    'approved': False,
+                    'reason': 'Preço de entrada inválido'
+                }
             # ================================
             # 1. VALIDAR LIMITE GLOBAL DE CAPITAL
             # ================================
@@ -78,27 +154,29 @@ class RiskCalculator:
             )
             
             # ================================
-            # 2. CALCULAR RISCO
+            # 2. CALCULAR RISCO COM STOP DINÂMICO
             # ================================
             
             risk_distance = abs(entry_price - stop_loss)
             risk_pct = (risk_distance / entry_price) * 100
             
-            # ✅ NOVO: Validar stop loss cap de 8%
-            if risk_pct > self.max_stop_loss_pct:
+            # 🎯 v4.0: Usar stop loss dinâmico baseado em performance
+            dynamic_max_sl = self.calculate_dynamic_stop_loss()
+            
+            if risk_pct > dynamic_max_sl:
                 logger.warning(
-                    f"⚠️ {symbol}: Stop loss {risk_pct:.2f}% > {self.max_stop_loss_pct}% (cap)\n"
-                    f"  Ajustando stop loss para {self.max_stop_loss_pct}%"
+                    f"⚠️ {symbol}: Stop loss {risk_pct:.2f}% > {dynamic_max_sl:.1f}% (dinâmico)\n"
+                    f"  Ajustando stop loss para {dynamic_max_sl:.1f}%"
                 )
                 
-                # Ajustar stop loss para o cap
+                # Ajustar stop loss para o máximo dinâmico
                 if direction == 'LONG':
-                    stop_loss = entry_price * (1 - self.max_stop_loss_pct / 100)
+                    stop_loss = entry_price * (1 - dynamic_max_sl / 100)
                 else:
-                    stop_loss = entry_price * (1 + self.max_stop_loss_pct / 100)
+                    stop_loss = entry_price * (1 + dynamic_max_sl / 100)
                 
                 risk_distance = abs(entry_price - stop_loss)
-                risk_pct = self.max_stop_loss_pct
+                risk_pct = dynamic_max_sl
             
             # ================================
             # 3. CALCULAR MARGEM DISPONÍVEL

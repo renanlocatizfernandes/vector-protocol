@@ -17,6 +17,8 @@ class Supervisor:
             "trading_loop": 120,      # 2 minutos sem heartbeat = freeze
             "sniper_loop": 300,       # 5 minutos
             "dca_loop": 300,          # 5 minutos
+            "pyramiding_loop": 240,   # 4 minutos
+            "time_exit_loop": 400,    # 6.5 minutos
             "position_monitor": 60    # 1 minuto
         }
         self.bot_instance = None  # Referência ao bot para restart
@@ -55,7 +57,7 @@ class Supervisor:
     async def _check_health(self):
         """Verifica se algum componente parou de responder"""
         now = time.time()
-        for component, last_beat in self.heartbeats.items():
+        for component, last_beat in list(self.heartbeats.items()):
             threshold = self.thresholds.get(component, 120)
             if now - last_beat > threshold:
                 logger.error(f"💀 COMPONENTE MORTO: {component} (sem heartbeat há {int(now - last_beat)}s)")

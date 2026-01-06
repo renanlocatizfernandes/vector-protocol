@@ -18,6 +18,10 @@ Operational guide for the Crypto Trading Bot.
    - `BINANCE_API_KEY`
    - `BINANCE_API_SECRET`
    - `DATABASE_URL` (if not using Docker default)
+- `API_PORT_HOST` (Docker host port, default 8000)
+- `API_AUTH_ENABLED` (enable API key protection)
+- `API_KEY` (shared secret for API access)
+- `API_KEY_HEADER` (header name, default X-API-Key)
 
 ## Starting the System
 
@@ -45,7 +49,7 @@ npm run dev
 ## Verification
 
 ### Health Checks
-- **API Health**: `GET http://localhost:8000/health` -> Should return `200 OK`.
+- **API Health**: `GET http://localhost:8000/health (or API_PORT_HOST)` -> Should return `200 OK`.
 - **Frontend**: Access `http://localhost:3000` (Docker) or `http://localhost:5173` (Local).
 
 ### Logging

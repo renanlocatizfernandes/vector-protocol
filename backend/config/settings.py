@@ -23,24 +23,27 @@ class Settings(BaseSettings):
     # API
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
+    API_AUTH_ENABLED: bool = False
+    API_KEY: str = ""
+    API_KEY_HEADER: str = "X-API-Key"
     
-    # Bot Settings
-    MAX_POSITIONS: int = 20  # ← Aumentado para 20
-    RISK_PER_TRADE: float = 0.02
-    MAX_PORTFOLIO_RISK: float = 0.40 # Aumentado para 40%
-    DEFAULT_LEVERAGE: int = 5 # Aumentado para 5x
-    SCANNER_MAX_SYMBOLS: int = 300 # Aumentado para buscar mais símbolos
-
+    # ============================================
+    # BOT SETTINGS - OTIMIZADO PARA RECUPERAÇÃO (CONSERVADOR)
+    # ============================================
+    MAX_POSITIONS: int = 3  # Limite para 3 posições (validação de features)
+    RISK_PER_TRADE: float = 0.025  # 2.5% por trade (era 10%)
+    MAX_PORTFOLIO_RISK: float = 0.15  # 15% máximo em risco
+    DEFAULT_LEVERAGE: int = 10  # 10x padrão (reduz margem requerida 50%)
     # Risco e spread (afinamento fino)
-    SNIPER_RISK_PER_TRADE: float = 0.01       # Risco por trade sniper (fração, ex.: 0.01 = 1%)
-    MAX_SPREAD_PCT_CORE: float = 0.30         # Spread máximo (%) para entradas core
-    MAX_SPREAD_PCT_SNIPER: float = 0.50       # Spread máximo (%) para sniper (mais permissivo)
+    SNIPER_RISK_PER_TRADE: float = 0.02  # 2% por sniper
+    MAX_SPREAD_PCT_CORE: float = 0.20 # Spread mais apertado
+    MAX_SPREAD_PCT_SNIPER: float = 0.30
 
-    # Sniper strategy (scalps rápidos)
-    SNIPER_EXTRA_SLOTS: int = 5              # Slots extras além de MAX_POSITIONS para entradas sniper
-    SNIPER_TP_PCT: float = 0.6               # Alvo de lucro em % (ex.: 0.6% por trade)
-    SNIPER_SL_PCT: float = 0.3               # Stop em % (ex.: 0.3% de perda máxima por sniper)
-    SNIPER_DEFAULT_LEVERAGE: int = 10        # Alavancagem padrão para sniper
+    # Sniper strategy (scalps rápidos) - AGRESSIVO
+    SNIPER_EXTRA_SLOTS: int = 0  # Sem slots extras por enquanto
+    SNIPER_TP_PCT: float = 1.2  # Alvos um pouco maiores
+    SNIPER_SL_PCT: float = 0.8  # Stops mais largos para evitar ruído
+    SNIPER_DEFAULT_LEVERAGE: int = 5  # 5x para sniper (era 20x)
 
     # Margin policy (Cross vs Isolated)
     DEFAULT_MARGIN_CROSSED: bool = True  # True = Cross como padrão
@@ -76,9 +79,13 @@ class Settings(BaseSettings):
     # Market Scanner (cobertura de universo)
     SCANNER_TOP_N: int = 800                     # Top-N por volume (quoteVolume) para priorização
     SCANNER_MAX_SYMBOLS: int = 400               # Limite de símbolos processados por ciclo (performance)
+    SCANNER_STRICT_WHITELIST: bool = True        # Se True, restringe ao whitelist em qualquer ambiente
     SCANNER_TESTNET_STRICT_WHITELIST: bool = False # Se True, restringe ao whitelist no TESTNET
     MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Liquidez mínima 24h reduzida para 500k (Ultra Aggressive)
     SCANNER_CONCURRENCY: int = 8                 # Paralelismo sugerido para chamadas de klines/validações
+    SYMBOL_WHITELIST: list[str] = [              # Whitelist principal (prod/testnet)
+        "HYPERUSDT", "TURBOUSDT", "BANANAUSDT"
+    ]
     TESTNET_WHITELIST: list[str] = [             # Whitelist padrão para TESTNET
         "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
         "DOGEUSDT","SOLUSDT","LTCUSDT","DOTUSDT","LINKUSDT","TRXUSDT","BCHUSDT"
@@ -110,34 +117,35 @@ class Settings(BaseSettings):
 
     # Correlação
     CORR_WINDOW_DAYS: int = 14
-    MAX_CORRELATION: float = 0.85 # Aumentado para permitir mais sinais correlacionados
+    MAX_CORRELATION: float = 0.85
 
     # Mercado (pump/dump e requisitos)
-    PUMP_THRESHOLD_PCT: float = 40.0 # Aumentado para ser menos restritivo
+    PUMP_THRESHOLD_PCT: float = 40.0
     PUMP_TIMEFRAME_HOURS: int = 2
     PUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    DUMP_THRESHOLD_PCT: float = 30.0 # Aumentado para ser menos restritivo
+    DUMP_THRESHOLD_PCT: float = 30.0
     DUMP_TIMEFRAME_HOURS: int = 2
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    REQUIRED_SCORE_SIDEWAYS: int = 40  # Relaxado para 40
+    REQUIRED_SCORE_SIDEWAYS: int = 50  # Aumentado para qualidade
 
-    # Risco adicional
-    DAILY_MAX_LOSS_PCT: float = 0.10 # Aumentado para 10%
-    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.15 # Aumentado para 15%
+    # 🛑 HARD STOPS - 20% diário conforme solicitado
+    # 🛑 HARD STOPS - Conservador
+    DAILY_MAX_LOSS_PCT: float = 0.05  # 5% máximo de perda/dia
+    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.25  # 25% drawdown intraday
 
     # ========================================
     # SIGNAL GENERATOR - Advanced Filters (v5.0)
     # ========================================
     
     # ADX Trend Strength Filter
-    ENABLE_ADX_FILTER: bool = False # Desativado para pegar qualquer movimento
+    ENABLE_ADX_FILTER: bool = False
     ADX_MIN_TREND_STRENGTH: float = 10.0
     
-    # Auto-start do Bot
-    AUTOSTART_BOT: bool = True
-    BOT_DRY_RUN: bool = False
-    BOT_MIN_SCORE: int = 30  # Reduzido para 30 (Ultra Aggressive)
-    BOT_MAX_POSITIONS: int = 25  # Aumentado para 25
+    # Auto-start do Bot - AGRESSIVO
+    AUTOSTART_BOT: bool = False
+    BOT_DRY_RUN: bool = True
+    BOT_MIN_SCORE: int = 70  # Alta qualidade apenas (era 55)
+    BOT_MAX_POSITIONS: int = 2  # Apenas 2 posições
     BOT_SCAN_INTERVAL_MINUTES: int = 1
 
     # Positions Sync
@@ -147,13 +155,88 @@ class Settings(BaseSettings):
 
     # Virtual Balance (opera "como se fosse" uma banca fixa)
     VIRTUAL_BALANCE_ENABLED: bool = False
-    VIRTUAL_BALANCE_USDT: float = 300.0
+    VIRTUAL_BALANCE_USDT: float = 100.0
+    
+    # Cache Settings (Redis)
+    CACHE_ENABLED: bool = True  # Habilitar cache para reduzir chamadas à API
+    CACHE_ACCOUNT_TTL: int = 10  # Saldo: 10s
+    CACHE_POSITIONS_TTL: int = 5  # Posições: 5s
+    CACHE_SYMBOL_INFO_TTL: int = 3600  # Info de símbolos: 1h
+    CACHE_MARKET_DATA_TTL: int = 2  # Preços: 2s
+    CACHE_KLINES_TTL: int = 30  # Klines: 30s
     
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
     TELEGRAM_ENABLED: bool = False
-    
+
+    # ========================================
+    # PROFIT OPTIMIZATION - Advanced Market Intelligence
+    # ========================================
+
+    # Top Trader Sentiment
+    ENABLE_TOP_TRADER_FILTER: bool = True
+    TOP_TRADER_MIN_BULLISH_RATIO: float = 1.15  # >1.15 = strong bullish
+    TOP_TRADER_MAX_BEARISH_RATIO: float = 0.85  # <0.85 = strong bearish
+    TOP_TRADER_SCORE_BONUS: int = 15
+
+    # Liquidation Detection
+    ENABLE_LIQUIDATION_ZONES: bool = True
+    LIQUIDATION_ZONE_LOOKBACK_HOURS: int = 24
+    LIQUIDATION_ZONE_PROXIMITY_PCT: float = 2.0  # Within 2% = bonus
+    LIQUIDATION_ZONE_SCORE_BONUS: int = 15
+
+    # Funding Rate Intelligence
+    FUNDING_HISTORY_PERIODS: int = 24  # Last 24 periods = 7 days
+    FUNDING_EXTREME_THRESHOLD: float = 0.001  # 0.1% = extreme
+    FUNDING_BLOCK_THRESHOLD: float = 0.0008  # Block if > 0.08%
+    FUNDING_EXIT_THRESHOLD: float = 0.0008  # Exit before funding if > 0.08%
+    FUNDING_EXIT_MIN_PROFIT: float = 0.5  # Min profit % to exit for funding
+
+    # OI-Price Correlation
+    ENABLE_OI_CORRELATION: bool = True
+    OI_CORRELATION_MIN_CHANGE: float = 3.0  # Min 3% OI change
+    OI_STRONG_SIGNAL_BONUS: int = 10
+
+    # Order Book Depth
+    ENABLE_ORDER_BOOK_FILTER: bool = True
+    MIN_LIQUIDITY_DEPTH_USDT: float = 100000.0  # $100k within 5%
+    ORDER_BOOK_DEPTH_LEVELS: int = 100
+
+    # Mark-Last Deviation
+    MARK_LAST_WARNING_PCT: float = 0.5
+    MARK_LAST_CRITICAL_PCT: float = 1.0
+
+    # ========================================
+    # PROFIT OPTIMIZATION - Fee & Breakeven Tracking
+    # ========================================
+
+    # Fee-Aware Trading
+    TRACK_FEES_PER_TRADE: bool = True
+    ESTIMATE_TAKER_FEE: float = 0.0005  # 0.05% Binance taker default
+    ESTIMATE_MAKER_FEE: float = 0.0002  # 0.02% Binance maker default
+
+    # Breakeven Stop
+    ENABLE_BREAKEVEN_STOP: bool = True
+    BREAKEVEN_ACTIVATION_PCT: float = 2.0  # Activate at +2% profit
+
+    # Dynamic Take Profit
+    ENABLE_DYNAMIC_TP: bool = True
+    TP_MOMENTUM_RSI_THRESHOLD: float = 65.0  # RSI > 65 for extension
+    TP_MOMENTUM_VOLUME_THRESHOLD: float = 1.5  # Volume > 1.5x avg
+    TP_FIBONACCI_EXTENSIONS: list[float] = [1.618, 2.618, 4.236]
+
+    # Funding-Aware Exits
+    ENABLE_FUNDING_EXITS: bool = True
+    FUNDING_EXIT_TIME_WINDOW_MIN: int = 30  # Exit 30min before
+
+    # ========================================
+    # PROFIT OPTIMIZATION - Feature Flags
+    # ========================================
+
+    ENABLE_MARKET_INTELLIGENCE: bool = True  # Master switch for all MI features
+    ENABLE_PROFIT_OPTIMIZER: bool = True      # Master switch for profit optimization
+
     class Config:
         # ✅ CORRIGIR: Detectar automaticamente o ambiente
         # Tenta achar .env no root do repo

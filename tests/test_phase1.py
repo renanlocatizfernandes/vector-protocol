@@ -5,7 +5,10 @@ Tests: ADX, VWAP, RSI Divergence, Volume-Confirmed Candlestick Patterns
 """
 import asyncio
 import sys
-sys.path.insert(0, '/home/renan/crypto-trading-bot/backend')
+from pathlib import Path
+
+repo_root = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(repo_root / "backend"))
 
 from modules.market_scanner import market_scanner
 from modules.signal_generator import signal_generator

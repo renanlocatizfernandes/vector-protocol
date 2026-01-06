@@ -498,7 +498,75 @@ class SignalGenerator:
         # ================================
         
         leverage = self._calculate_leverage(volume_ratio, rsi, risk_reward_ratio)
-        
+
+        # ================================
+        # PROFIT OPTIMIZATION - Market Intelligence Integration (v6.0)
+        # ================================
+
+        market_sentiment_score = 0
+        top_trader_ratio = None
+        liquidation_proximity = None
+
+        if getattr(self.settings, "ENABLE_MARKET_INTELLIGENCE", True):
+            try:
+                from modules.market_intelligence import market_intelligence
+
+                # Get market sentiment (includes all advanced data)
+                mi_data = await market_intelligence.get_market_sentiment_score(symbol)
+                sentiment_score = mi_data.get('sentiment_score', 0)
+                market_sentiment_score = sentiment_score
+
+                # Get individual components for signal enrichment
+                top_trader_data = await market_intelligence.get_top_trader_ratios(symbol)
+                top_trader_ratio = top_trader_data.get('account_ratio', 1.0)
+
+                liq_data = await market_intelligence.detect_liquidation_zones(symbol)
+                liq_proximity = liq_data.get('current_proximity', {})
+                liquidation_proximity = liq_proximity.get('distance_type', 'NEUTRAL')
+
+                # Apply market intelligence adjustments to score
+                if direction == 'LONG':
+                    if sentiment_score > 20:
+                        score += 20
+                        logger.info(f"{symbol}: Institutional buying confirmed (+20) - {top_trader_data.get('sentiment')}")
+                    elif sentiment_score > 10:
+                        score += 10
+                    elif sentiment_score < -20:
+                        logger.warning(f"{symbol}: Strong institutional selling - BLOCKING")
+                        return None
+                    elif sentiment_score < -10:
+                        score -= 10
+
+                    # Liquidation zone bonus
+                    if liquidation_proximity and liq_proximity.get('distance_pct', 100) < 2:
+                        score += 15
+                        logger.info(f"{symbol}: Near bullish liquidation zone (+15)")
+
+                elif direction == 'SHORT':
+                    if sentiment_score < -20:
+                        score += 20
+                        logger.info(f"{symbol}: Institutional selling confirmed (+20) - {top_trader_data.get('sentiment')}")
+                    elif sentiment_score < -10:
+                        score += 10
+                    elif sentiment_score > 20:
+                        logger.warning(f"{symbol}: Strong institutional buying - BLOCKING")
+                        return None
+                    elif sentiment_score > 10:
+                        score -= 10
+
+                    # Liquidation zone bonus
+                    if liquidation_proximity and liq_proximity.get('distance_pct', 100) < 2:
+                        score += 15
+                        logger.info(f"{symbol}: Near bearish liquidation zone (+15)")
+
+                logger.debug(
+                    f"{symbol}: Market Intelligence - Sentiment {sentiment_score:+d}, "
+                    f"Top Traders {top_trader_ratio:.2f}x, Final Score {min(score, 100):.0f}"
+                )
+
+            except Exception as e:
+                logger.debug(f"{symbol}: Market Intelligence unavailable ({e})")
+
         # ================================
         # CONSTRUIR SINAL
         # ================================
@@ -521,6 +589,10 @@ class SignalGenerator:
             'minutes_to_funding': mins_to_funding if 'mins_to_funding' in locals() and mins_to_funding is not None else 0,
             'oi_change_pct': float((der.get('oi_change') or {}).get('pct_change', 0.0)) if 'der' in locals() else 0.0,
             'taker_ratio': float((der.get('taker') or {}).get('buySellRatio', 1.0)) if 'der' in locals() else 1.0,
+            # ✅ PROFIT OPTIMIZATION - Market Intelligence Fields
+            'market_sentiment_score': market_sentiment_score,
+            'top_trader_ratio': top_trader_ratio,
+            'liquidation_proximity': liquidation_proximity,
             'timestamp': datetime.now()
         }
         

@@ -28,6 +28,10 @@ Use `.env.docker` (Docker) ou `.env` (local) na raiz do repositório. Exemplo m�
   - `DATABASE_URL=postgresql+psycopg2://trading_bot:...@db:5432/trading_bot_db`
   - `REDIS_HOST=redis`
   - `REDIS_PORT=6379`
+- `API_PORT_HOST=8000`
+- `API_AUTH_ENABLED=false`
+- `API_KEY=change_me`
+- `API_KEY_HEADER=X-API-Key`
 
 Observação: o arquivo `backend/config/settings.py` já mapeia defaults sensatos e detecta `.env.docker` quando roda em container.
 
@@ -80,7 +84,7 @@ docker compose up -d --build
 ```
 
 Serviços:
-- API FastAPI: http://localhost:8000
+- API FastAPI: http://localhost:8000 (ou API_PORT_HOST)
 - PostgreSQL: localhost:5432
 - Redis: localhost:6379
 - Logs: ./logs

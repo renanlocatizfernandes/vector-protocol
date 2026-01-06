@@ -3,6 +3,7 @@ Autonomous Bot - PROFESSIONAL VERSION v5.0
 ✅ Refatorado para melhor organização e manutenibilidade
 """
 import asyncio
+import time
 import pandas as pd
 from typing import List, Dict
 from datetime import datetime, timezone
@@ -63,6 +64,45 @@ class AutonomousBot:
         self.dry_run = True
         self.max_positions = self.base_max_positions
         self.max_new_positions_per_cycle = self.base_max_new_per_cycle
+        self._whitelist_block_cache = {}
+        self._whitelist_block_cache_ttl = 300
+
+    def _whitelist_allows(self, symbol: str) -> bool:
+        settings = get_settings()
+        wl = [str(x).upper() for x in (getattr(settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
+        if not wl:
+            return True
+        if not bool(getattr(settings, "SCANNER_STRICT_WHITELIST", False)):
+            return True
+        return str(symbol).upper() in wl
+
+    def _log_whitelist_block(self, symbol: str, action: str) -> None:
+        now = time.time()
+        key = f"wl_{action}_{symbol}"
+        if key in self._whitelist_block_cache:
+            if now - self._whitelist_block_cache[key] < self._whitelist_block_cache_ttl:
+                return
+        logger.warning(f"Whitelist block: {symbol} action {action} skipped")
+        self._whitelist_block_cache[key] = now
+
+    # Propriedades de conveniência para a API
+    @property
+    def scan_interval(self):
+        """Delega para bot_config.scan_interval"""
+        return self.bot_config.scan_interval
+    
+    @scan_interval.setter
+    def scan_interval(self, value):
+        self.bot_config.scan_interval = value
+    
+    @property
+    def min_score(self):
+        """Delega para bot_config.min_score"""
+        return self.bot_config.min_score
+    
+    @min_score.setter
+    def min_score(self, value):
+        self.bot_config.min_score = value
 
     def reload_settings(self):
         self.bot_config.reload_settings()
@@ -128,6 +168,9 @@ class AutonomousBot:
                     for trade in open_trades:
                         if hasattr(trade, 'pyramided') and trade.pyramided:
                             continue
+                        if not self._whitelist_allows(trade.symbol):
+                            self._log_whitelist_block(trade.symbol, "pyramiding")
+                            continue
                         
                         logger.info(f"📈 PYRAMIDING: {trade.symbol} +{trade.pnl_percentage:.2f}%\n"
                                     f"  Adicionando {self.pyramiding_multiplier*100:.0f}% à posição...")
@@ -140,11 +183,23 @@ class AutonomousBot:
                             side = 'BUY' if trade.direction == 'LONG' else 'SELL'
                             
                             if not self.dry_run:
-                                order = self.client.futures_create_order(
-                                    symbol=trade.symbol,
-                                    side=side,
-                                    type='MARKET',
-                                    quantity=additional_qty
+                                position_side = None
+                                try:
+                                    position_side = await binance_client.get_position_side(trade.direction)
+                                except Exception as e:
+                                    logger.debug(f"Position side lookup failed: {e}")
+
+                                order_params = {
+                                    "symbol": trade.symbol,
+                                    "side": side,
+                                    "type": "MARKET",
+                                    "quantity": additional_qty
+                                }
+                                if position_side:
+                                    order_params["positionSide"] = position_side
+                                order = await asyncio.to_thread(
+                                    self.client.futures_create_order,
+                                    **order_params
                                 )
                                 new_avg_price = ((trade.entry_price * trade.quantity + float(order['avgPrice']) * additional_qty) /
                                                  (trade.quantity + additional_qty))
@@ -235,6 +290,9 @@ class AutonomousBot:
                 try:
                     open_trades = db.query(Trade).filter(Trade.status == 'open').all()
                     for trade in open_trades:
+                        if not self._whitelist_allows(trade.symbol):
+                            self._log_whitelist_block(trade.symbol, "dca")
+                            continue
                         if trade.pnl_percentage > dca_threshold_pct:
                             continue
                             
@@ -275,7 +333,24 @@ class AutonomousBot:
                             side = 'BUY' if trade.direction == 'LONG' else 'SELL'
                             
                             if not self.dry_run:
-                                order = await asyncio.to_thread(self.client.futures_create_order, symbol=trade.symbol, side=side, type='MARKET', quantity=dca_qty)
+                                position_side = None
+                                try:
+                                    position_side = await binance_client.get_position_side(trade.direction)
+                                except Exception as e:
+                                    logger.debug(f"Position side lookup failed: {e}")
+
+                                order_params = {
+                                    "symbol": trade.symbol,
+                                    "side": side,
+                                    "type": "MARKET",
+                                    "quantity": dca_qty
+                                }
+                                if position_side:
+                                    order_params["positionSide"] = position_side
+                                order = await asyncio.to_thread(
+                                    self.client.futures_create_order,
+                                    **order_params
+                                )
                                 
                                 avg_price = float(order['avgPrice'])
                                 new_total_qty = trade.quantity + dca_qty
@@ -350,6 +425,9 @@ class AutonomousBot:
                     now = datetime.now(timezone.utc)
                     
                     for trade in open_trades:
+                        if not self._whitelist_allows(trade.symbol):
+                            self._log_whitelist_block(trade.symbol, "time_exit")
+                            continue
                         entry_time = trade.opened_at
                         if entry_time.tzinfo is None:
                             entry_time = entry_time.replace(tzinfo=timezone.utc)
@@ -391,7 +469,8 @@ class AutonomousBot:
             if not candidate_symbols: raise ValueError("No candidates")
         except Exception:
             logger.warning("⚠️ Nenhum candidato Sniper encontrado. Usando fallback.")
-            candidate_symbols = ["BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT","SOLUSDT","DOGEUSDT","LTCUSDT","LINKUSDT","DOTUSDT"]
+            fallback = list(getattr(settings, "SYMBOL_WHITELIST", [])) or list(getattr(settings, "TESTNET_WHITELIST", []))
+            candidate_symbols = [s.upper() for s in fallback if str(s).strip()] or ["BTCUSDT","ETHUSDT","BNBUSDT"]
 
         opened = 0
         for sym in candidate_symbols:
@@ -534,13 +613,20 @@ class AutonomousBot:
                     if not db.query(Trade).filter(Trade.symbol == symbol, Trade.status == 'open').first():
                         logger.info(f"🔄 Sincronizando {symbol}...")
                         position_amt = float(pos['positionAmt'])
+                        entry_price = float(pos['entryPrice'])
+                        direction = 'LONG' if position_amt > 0 else 'SHORT'
+                        if direction == 'LONG':
+                            stop_loss = entry_price * 0.92
+                        else:
+                            stop_loss = entry_price * 1.08
                         trade = Trade(
                             symbol=symbol,
-                            direction='LONG' if position_amt > 0 else 'SHORT',
-                            entry_price=float(pos['entryPrice']),
-                            current_price=float(pos['entryPrice']),
+                            direction=direction,
+                            entry_price=entry_price,
+                            current_price=entry_price,
                             quantity=abs(position_amt),
                             leverage=int(pos.get('leverage', 3)),
+                            stop_loss=stop_loss,
                             status='open'
                         )
                         db.add(trade)

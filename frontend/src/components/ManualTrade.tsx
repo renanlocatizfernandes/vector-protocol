@@ -51,7 +51,7 @@ export const ManualTrade: React.FC = () => {
                 <Zap className="w-24 h-24 text-warning" />
             </div>
 
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-dark-700/50">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-white/10">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                     <Zap className="h-4 w-4 text-warning animate-pulse" /> Manual Trade Execution
                 </CardTitle>
@@ -63,7 +63,7 @@ export const ManualTrade: React.FC = () => {
                             <label className="text-xs font-medium text-muted-foreground">Symbol</label>
                             <Input
                                 type="text"
-                                className="font-mono uppercase bg-dark-800 border-dark-700 focus:border-primary/50"
+                                className="font-mono uppercase bg-white/5 border-white/10 focus:border-primary/50"
                                 value={symbol}
                                 onChange={(e) => setSymbol(e.target.value)}
                                 placeholder="BTCUSDT"
@@ -74,7 +74,7 @@ export const ManualTrade: React.FC = () => {
                             <label className="text-xs font-medium text-muted-foreground">Leverage</label>
                             <Input
                                 type="number"
-                                className="bg-dark-800 border-dark-700 focus:border-primary/50"
+                                className="bg-white/5 border-white/10 focus:border-primary/50"
                                 value={leverage}
                                 onChange={(e) => setLeverage(e.target.value)}
                                 min="1"
@@ -94,8 +94,8 @@ export const ManualTrade: React.FC = () => {
                                     className={cn(
                                         "flex-1 transition-all duration-300",
                                         direction === 'LONG'
-                                            ? "bg-success hover:bg-success/90 text-dark-950 shadow-[0_0_15px_rgba(0,255,157,0.4)]"
-                                            : "border-dark-700 hover:border-success/50 hover:text-success"
+                                            ? "bg-success hover:bg-success/90 text-dark-950 shadow-[0_0_15px_rgba(43,212,165,0.35)]"
+                                            : "border-white/10 hover:border-success/50 hover:text-success"
                                     )}
                                     onClick={() => setDirection('LONG')}
                                 >
@@ -107,8 +107,8 @@ export const ManualTrade: React.FC = () => {
                                     className={cn(
                                         "flex-1 transition-all duration-300",
                                         direction === 'SHORT'
-                                            ? "bg-danger hover:bg-danger/90 text-white shadow-[0_0_15px_rgba(255,77,77,0.4)]"
-                                            : "border-dark-700 hover:border-danger/50 hover:text-danger"
+                                            ? "bg-danger hover:bg-danger/90 text-white shadow-[0_0_15px_rgba(255,90,95,0.35)]"
+                                            : "border-white/10 hover:border-danger/50 hover:text-danger"
                                     )}
                                     onClick={() => setDirection('SHORT')}
                                 >
@@ -120,7 +120,7 @@ export const ManualTrade: React.FC = () => {
                             <label className="text-xs font-medium text-muted-foreground">Amount</label>
                             <Input
                                 type="number"
-                                className="bg-dark-800 border-dark-700 focus:border-primary/50"
+                                className="bg-white/5 border-white/10 focus:border-primary/50"
                                 value={amount}
                                 onChange={(e) => setAmount(e.target.value)}
                                 step="0.0001"
@@ -131,7 +131,7 @@ export const ManualTrade: React.FC = () => {
 
                     <div className="space-y-3">
                         <label className="text-xs font-medium text-muted-foreground">Amount Type</label>
-                        <div className="flex bg-dark-800 p-1 rounded-lg gap-1 border border-dark-700/50">
+                        <div className="flex bg-white/5 p-1 rounded-lg gap-1 border border-white/10">
                             {[
                                 { id: 'quantity', label: 'Coin Qty' },
                                 { id: 'usdt_total', label: 'Total USDT' },
@@ -144,7 +144,7 @@ export const ManualTrade: React.FC = () => {
                                         "flex-1 py-1.5 px-2 rounded-md text-xs transition-all duration-300",
                                         amountType === type.id
                                             ? "bg-primary/20 text-primary shadow-sm font-medium border border-primary/20"
-                                            : "text-muted-foreground hover:text-white hover:bg-dark-700"
+                                            : "text-muted-foreground hover:text-white hover:bg-white/10"
                                     )}
                                     onClick={() => setAmountType(type.id as AmountType)}
                                 >
@@ -171,7 +171,7 @@ export const ManualTrade: React.FC = () => {
                     {message && (
                         <div className={cn(
                             "p-3 rounded-lg text-xs text-center font-medium border animate-in zoom-in-95",
-                            message.type === 'success' ? "bg-green-500/10 text-green-500 border-green-500/20" : "bg-red-500/10 text-red-500 border-red-500/20"
+                            message.type === 'success' ? "bg-success/10 text-success border-success/20" : "bg-danger/10 text-danger border-danger/20"
                         )}>
                             {message.text}
                         </div>

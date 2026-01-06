@@ -17,6 +17,7 @@ from typing import Dict, Optional, List
 from datetime import datetime, timezone
 
 from utils.binance_client import binance_client
+from binance.exceptions import BinanceAPIException
 from utils.logger import setup_logger
 from config.settings import get_settings
 from modules.risk_calculator import risk_calculator
@@ -111,23 +112,95 @@ class OrderExecutor:
             ticker = await asyncio.to_thread(self.client.futures_orderbook_ticker, symbol=symbol)
             bid = float(ticker.get('bidPrice', 0))
             ask = float(ticker.get('askPrice', 0))
-            
+
             if bid <= 0 or ask <= 0:
                 return False, "Orderbook vazio ou inválido"
-                
+
             spread_pct = ((ask - bid) / ask) * 100
-            
+
             if spread_pct > self.max_spread_pct:
                 return False, f"Spread alto: {spread_pct:.3f}% > {self.max_spread_pct}%"
-                
+
             return True, "Spread OK"
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Erro ao validar spread para {symbol}: {e}")
-            # Em caso de erro de rede, assumimos risco e permitimos (fail open) 
-            # ou bloqueamos (fail close)? 
+            # Em caso de erro de rede, assumimos risco e permitimos (fail open)
+            # ou bloqueamos (fail close)?
             # Fail open para não travar o bot, mas logamos warning.
             return True, f"Spread check ignored: {e}"
+
+    async def _validate_order_book_depth(self, symbol: str, signal: Dict) -> bool:
+        """
+        ✅ PROFIT OPTIMIZATION: Valida profundidade do order book
+
+        Checks liquidity within 5% of current price:
+        - Warns if liquidity < minimum threshold ($100k default)
+        - Logs liquidity score and execution risk
+        - Helps prevent trades with high slippage
+
+        Returns: True if liquidity is acceptable, False otherwise (but doesn't block)
+        """
+        try:
+            from modules.market_intelligence import market_intelligence
+
+            # Get order book depth metrics
+            depth_data = await market_intelligence.get_order_book_depth(symbol)
+
+            if not depth_data:
+                logger.debug(f"⚠️ {symbol}: Não foi possível obter dados de profundidade do order book")
+                return True  # Não bloqueia se não conseguir dados
+
+            bid_liq = depth_data.get('bid_liquidity_5pct', 0)
+            ask_liq = depth_data.get('ask_liquidity_5pct', 0)
+            liquidity_score = depth_data.get('liquidity_score', 0)
+            execution_risk = depth_data.get('execution_risk', 'UNKNOWN')
+            imbalance = depth_data.get('imbalance_ratio', 1.0)
+
+            min_liquidity_usd = float(getattr(self.settings, "MIN_LIQUIDITY_DEPTH_USDT", 100000.0))
+
+            # Log depth information
+            logger.info(
+                f"📊 {symbol} Order Book Depth:\n"
+                f"  Bid Liquidity (5%): ${bid_liq:,.0f}\n"
+                f"  Ask Liquidity (5%): ${ask_liq:,.0f}\n"
+                f"  Imbalance Ratio: {imbalance:.2f}\n"
+                f"  Liquidity Score: {liquidity_score}/10\n"
+                f"  Execution Risk: {execution_risk}"
+            )
+
+            # Check liquidity thresholds
+            min_side_liq = min(bid_liq, ask_liq)
+
+            if min_side_liq < min_liquidity_usd:
+                logger.warning(
+                    f"⚠️ {symbol}: Baixa liquidez detectada\n"
+                    f"  Min lado: ${min_side_liq:,.0f} < ${min_liquidity_usd:,.0f}\n"
+                    f"  Risco de alto slippage na execução"
+                )
+
+            # Log warning if execution risk is HIGH
+            if execution_risk == 'HIGH':
+                logger.warning(
+                    f"🚨 {symbol}: ALTO RISCO de execução\n"
+                    f"  Liquidity Score: {liquidity_score}/10\n"
+                    f"  Considerar reduzir tamanho ou aguardar melhor liquidez"
+                )
+
+            # Add liquidity metrics to signal for tracking
+            signal['order_book_depth'] = {
+                'liquidity_score': liquidity_score,
+                'execution_risk': execution_risk,
+                'bid_liquidity_5pct': bid_liq,
+                'ask_liquidity_5pct': ask_liq,
+                'imbalance_ratio': imbalance
+            }
+
+            return True  # Não bloqueia, apenas avisa
+
+        except Exception as e:
+            logger.debug(f"Error validating order book depth for {symbol}: {e}")
+            return True  # Fail open - não bloqueia em caso de erro
     
     async def execute_signal(
         self,
@@ -145,6 +218,19 @@ class OrderExecutor:
 
         symbol = signal['symbol']
         direction = signal['direction']
+        position_side = None
+        try:
+            position_side = await binance_client.get_position_side(direction)
+        except Exception as e:
+            logger.debug(f"Position side lookup failed: {e}")
+
+        # Enforce whitelist for new executions; monitoring/closing is handled elsewhere.
+        wl = [str(x).upper() for x in (getattr(self.settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
+        if wl and bool(getattr(self.settings, "SCANNER_STRICT_WHITELIST", False)):
+            if str(symbol).upper() not in wl:
+                reason = f"Symbol not in whitelist: {symbol}"
+                logger.warning(f"Whitelist block: {reason}")
+                return {'success': False, 'reason': reason}
         
         # ✅ NOVO v4.0: Iniciar tracking de métricas
         execution_start_time = time.time()
@@ -164,7 +250,11 @@ class OrderExecutor:
             if not spread_valid:
                 logger.warning(f"❌ {symbol}: {spread_msg}")
                 return {'success': False, 'reason': spread_msg}
-            
+
+            # ✅ PROFIT OPTIMIZATION: Order Book Depth Filtering
+            if getattr(self.settings, "ENABLE_ORDER_BOOK_FILTER", True):
+                await self._validate_order_book_depth(symbol, signal)
+
             # Obter informações do símbolo
             symbol_info = await binance_client.get_symbol_info(symbol)
             
@@ -182,6 +272,7 @@ class OrderExecutor:
             # ================================
             
             # 2.1 Cálculo inicial com a alavancagem do sinal
+            open_positions_margin = 0.0
             if signal.get('force') and signal.get('user_quantity'):
                 # ✅ MANUAL TRADE: Usar quantidade definida pelo usuário
                 quantity = float(signal['user_quantity'])
@@ -189,6 +280,16 @@ class OrderExecutor:
                 logger.info(f"🔧 Trade Manual: Usando quantidade definida {quantity}")
                 risk_calc = {'approved': True, 'quantity': quantity, 'margin_required': margin_required}
             else:
+                try:
+                    account_state = await binance_client.get_account_balance()
+                    positions = (account_state or {}).get("positions") or []
+                    for p in positions:
+                        amt = float(p.get('positionAmt', 0) or 0)
+                        if amt != 0:
+                            open_positions_margin += abs(float(p.get('initialMargin', 0) or 0))
+                except Exception as e:
+                    logger.debug(f"Open positions margin calc failed: {e}")
+
                 # Automático
                 risk_calc = risk_calculator.calculate_position_size(
                     symbol=symbol,
@@ -197,6 +298,7 @@ class OrderExecutor:
                     stop_loss=signal['stop_loss'],
                     leverage=signal['leverage'],
                     account_balance=account_balance,
+                    open_positions_margin=open_positions_margin,
                     score=signal.get('score', 50)  # ✅ NOVO: Passar score
                 )
             
@@ -206,6 +308,7 @@ class OrderExecutor:
             
             quantity = risk_calc.get('quantity', quantity if 'quantity' in locals() else 0)
             margin_required = risk_calc.get('margin_required', margin_required if 'margin_required' in locals() else 0)
+            effective_stop_loss = float(risk_calc.get('stop_loss', signal['stop_loss']))
 
             # 2.2 Ajuste por Leverage Brackets (garantir alavancagem permitida para o notional)
             try:
@@ -219,14 +322,16 @@ class OrderExecutor:
                         symbol=symbol,
                         direction=direction,
                         entry_price=signal['entry_price'],
-                        stop_loss=signal['stop_loss'],
+                        stop_loss=effective_stop_loss,
                         leverage=max_lev_allowed,
-                        account_balance=account_balance
+                        account_balance=account_balance,
+                        open_positions_margin=open_positions_margin
                     )
                     if rc2.get('approved'):
                         risk_calc = rc2
                         quantity = rc2['quantity']
                         margin_required = rc2['margin_required']
+                        effective_stop_loss = float(rc2.get('stop_loss', effective_stop_loss))
                         lev_used = max_lev_allowed
                     else:
                         logger.warning(f"⚠️ {symbol}: Recalculo com leverage {max_lev_allowed}x não aprovado ({rc2.get('reason')}) — mantendo cálculo anterior")
@@ -301,9 +406,9 @@ class OrderExecutor:
                     f"🎯 DRY RUN: {symbol} {direction}\n"
                     f"  Entry: {signal['entry_price']:.4f}\n"
                     f"  Qty: {quantity:.4f}\n"
-                    f"  Leverage: {signal['leverage']}x\n"
+                    f"  Leverage: {effective_leverage}x\n"
                     f"  Margin: {margin_required:.2f} USDT\n"
-                    f"  Stop Loss: {signal['stop_loss']:.4f}\n"
+                    f"  Stop Loss: {effective_stop_loss:.4f}\n"
                     f"  Take Profit: {signal['take_profit_1']:.4f}\n"
                     f"  Margin Mode (plano): {planned_margin_txt}"
                 )
@@ -350,7 +455,8 @@ class OrderExecutor:
                     direction=direction,
                     quantity=quantity,
                     entry_price=signal['entry_price'],
-                    symbol_info=symbol_info
+                    symbol_info=symbol_info,
+                    position_side=position_side
                 )
                 order_type_used = "ICEBERG"
             else:
@@ -360,7 +466,8 @@ class OrderExecutor:
                     direction=direction,
                     quantity=quantity,
                     entry_price=signal['entry_price'],
-                    symbol_info=symbol_info
+                    symbol_info=symbol_info,
+                    position_side=position_side
                 )
                 order_type_used = order_result.get('order_type', 'LIMIT')
                 is_maker = order_result.get('is_maker', False)
@@ -395,6 +502,82 @@ class OrderExecutor:
                 logger.warning(f"⚠️ Falha ao obter total da posição, usando qtd da ordem: {e}")
             
             # ================================
+            # 5.5 OTIMIZACAO DINAMICA DE TAKE PROFIT (FIBONACCI)
+            # ================================
+
+            tp1_optimized = signal.get('take_profit_1', 0)
+            tp2_optimized = signal.get('take_profit_2', 0)
+            tp3_optimized = signal.get('take_profit_3', 0)
+            tp_strategy_used = 'STATIC'
+
+            if getattr(self.settings, "ENABLE_DYNAMIC_TP", True):
+                try:
+                    from modules.profit_optimizer import profit_optimizer
+
+                    # Preparar dados de momentum
+                    momentum_data = {
+                        'rsi': float(signal.get('rsi', 50) or 50),
+                        'volume_ratio': float(signal.get('volume_ratio', 1.0) or 1.0),
+                        'price_momentum_pct': 0.0  # Será calculado internamente se necessário
+                    }
+
+                    # Extrair ATR e recalcular TPs com otimização de momentum
+                    base_atr = float(signal.get('atr', 0) or 0)
+                    entry_price = float(signal['entry_price'])
+
+                    if base_atr > 0:
+                        # Chamar optimize_take_profit_levels com os parâmetros corretos
+                        optimized_tp_list = await profit_optimizer.optimize_take_profit_levels(
+                            symbol=symbol,
+                            direction=direction,
+                            entry_price=entry_price,
+                            quantity=quantity,  # Usar a quantidade já calculada
+                            base_atr=base_atr,
+                            momentum_data=momentum_data
+                        )
+
+                        if optimized_tp_list and len(optimized_tp_list) >= 3:
+                            tp1_optimized = optimized_tp_list[0]['price']
+                            tp2_optimized = optimized_tp_list[1]['price']
+                            tp3_optimized = optimized_tp_list[2]['price']
+
+                            # Determinar estratégia usada
+                            tp_strategy_used = optimized_tp_list[0].get('exit_reason', 'STATIC')
+                            if tp_strategy_used == 'tp_momentum':
+                                tp_strategy_used = 'FIBONACCI'
+                            elif tp_strategy_used == 'tp_static':
+                                tp_strategy_used = 'CONSERVATIVE'
+
+                            # Extract TP multiples for logging
+                            tp_multiples = [str(t.get('percentage', '?')) for t in optimized_tp_list]
+                            tp_multiples_str = ', '.join(tp_multiples)
+
+                            logger.info(
+                                f"✨ TPs DINAMICOS otimizados para {symbol}:\n"
+                                f"  Momentum: RSI={momentum_data['rsi']:.1f}, Vol={momentum_data['volume_ratio']:.2f}x\n"
+                                f"  Base TP1: {signal.get('take_profit_1', 0):.4f} → Otimizado: {tp1_optimized:.4f}\n"
+                                f"  Base TP2: {signal.get('take_profit_2', 0):.4f} → Otimizado: {tp2_optimized:.4f}\n"
+                                f"  Base TP3: {signal.get('take_profit_3', 0):.4f} → Otimizado: {tp3_optimized:.4f}\n"
+                                f"  Strategy: {tp_strategy_used}\n"
+                                f"  Multiplos: {tp_multiples_str}"
+                            )
+                        else:
+                            logger.warning(f"⚠️ optimize_take_profit_levels retornou resultado inválido")
+                    else:
+                        logger.warning(f"⚠️ ATR inválido ({base_atr}), usando TPs estáticos")
+                except Exception as e:
+                    logger.warning(f"⚠️ Erro ao otimizar TPs dinâmicos: {e}")
+                    # Fallback para valores originais do signal
+                    import traceback
+                    logger.debug(traceback.format_exc())
+
+            # Atualizar signal com TPs otimizados
+            signal['take_profit_1'] = tp1_optimized
+            signal['take_profit_2'] = tp2_optimized
+            signal['take_profit_3'] = tp3_optimized
+            signal['tp_strategy'] = tp_strategy_used
+
+            # ================================
             # 6. PROTEÇÕES: SL (e opcionalmente TP em batch) + Trailing Stop
             # ================================
             side_opp = 'SELL' if direction == 'LONG' else 'BUY'
@@ -407,14 +590,13 @@ class OrderExecutor:
                 try:
                     batch_orders = []
                     # SL obrigatório
-                    sl_price = round_step_size(signal['stop_loss'], symbol_info['tick_size'])
+                    sl_price = round_step_size(effective_stop_loss, symbol_info['tick_size'])
                     batch_orders.append({
                         "symbol": symbol,
                         "side": side_opp,
                         "type": "STOP_MARKET",
                         "stopPrice": sl_price,
                         "workingType": working_type,
-                        "reduceOnly": True,
                         "quantity": quantity
                     })
                     # TP ladder com frações configuráveis
@@ -448,10 +630,12 @@ class OrderExecutor:
                             "type": "LIMIT",
                             "price": price_i,
                             "timeInForce": "GTC",
-                            "reduceOnly": True,
                             "quantity": qty_i
                         })
                         tp_txt.append(f"{qty_i:.4f}@{price_i:.4f}")
+                    if position_side:
+                        for o in batch_orders:
+                            o["positionSide"] = position_side
                     # Enviar em uma única chamada
                     self.client.futures_place_batch_order(batchOrders=batch_orders)
                     placed_sl = True
@@ -465,8 +649,9 @@ class OrderExecutor:
                     symbol=symbol,
                     direction=direction,
                     quantity=quantity,
-                    stop_price=signal['stop_loss'],
-                    symbol_info=symbol_info
+                    stop_price=effective_stop_loss,
+                    symbol_info=symbol_info,
+                    position_side=position_side
                 )
                 if not stop_result['success']:
                     logger.warning(f"⚠️ Stop loss não configurado: {stop_result['reason']}")
@@ -503,7 +688,8 @@ class OrderExecutor:
                             direction=direction,
                             quantity=qty_i,
                             take_profit=float(tp),
-                            symbol_info=symbol_info
+                            symbol_info=symbol_info,
+                            position_side=position_side
                         )
                         if tp_res.get('success'):
                             tp_ok += 1
@@ -521,7 +707,8 @@ class OrderExecutor:
                         direction=direction,
                         quantity=quantity,
                         entry_price=signal['entry_price'],
-                        symbol_info=symbol_info
+                        symbol_info=symbol_info,
+                        position_side=position_side
                     )
                     if not tsl_res['success']:
                         logger.warning(f"⚠️ Trailing Stop não configurado: {tsl_res['reason']}")
@@ -551,13 +738,17 @@ class OrderExecutor:
                             break
                         # Enviar ordem reduce-only MARKET no lado oposto
                         try:
+                            reduce_params = {
+                                "symbol": symbol,
+                                "side": side_opp,
+                                "type": "MARKET",
+                                "quantity": reduce_qty
+                            }
+                            if position_side:
+                                reduce_params["positionSide"] = position_side
                             await asyncio.to_thread(
                                 self.client.futures_create_order,
-                                symbol=symbol,
-                                side=side_opp,
-                                type='MARKET',
-                                quantity=reduce_qty,
-                                reduceOnly=True
+                                **reduce_params
                             )
                             quantity -= reduce_qty
                             reduced_total += reduce_qty
@@ -596,15 +787,18 @@ class OrderExecutor:
                     entry_price=float(order_result['avg_price']),
                     current_price=float(order_result['avg_price']),
                     quantity=float(quantity),
-                    leverage=int(signal['leverage']),
-                    stop_loss=float(signal['stop_loss']),
+                    leverage=int(effective_leverage),
+                    stop_loss=float(effective_stop_loss),
                     take_profit_1=(float(signal.get('take_profit_1')) if signal.get('take_profit_1') is not None else None),
                     take_profit_2=(float(signal.get('take_profit_2')) if signal.get('take_profit_2') is not None else None),
                     take_profit_3=(float(signal.get('take_profit_3')) if signal.get('take_profit_3') is not None else None),
                     status='open',
                     pnl=0.0,
                     pnl_percentage=0.0,
-                    order_id=str(order_result['order_id'])
+                    order_id=str(order_result['order_id']),
+                    # ✅ PROFIT OPTIMIZATION - Dynamic TP fields
+                    is_maker_entry=order_result.get('is_maker', False),
+                    entry_time=datetime.now(timezone.utc)
                 )
                 
                 db.add(trade)
@@ -631,9 +825,10 @@ class OrderExecutor:
                     "direction": direction,
                     "entry_price": float(order_result['avg_price']),
                     "quantity": float(quantity),
-                    "leverage": int(signal.get('leverage', 0) or 0),
-                    "stop_loss": float(signal.get('stop_loss', 0) or 0),
-                    "take_profit_1": float(signal.get('take_profit_1', 0) or 0)
+                    "leverage": int(effective_leverage),
+                    "stop_loss": float(effective_stop_loss),
+                    "take_profit_1": float(signal.get('take_profit_1', 0) or 0),
+                    "tp_strategy": tp_strategy_used  # ✅ NOVO: Incluir estratégia de TP
                 })
             except Exception as e:
                 logger.warning(f"⚠️ Erro ao notificar Telegram: {e}")
@@ -683,34 +878,37 @@ class OrderExecutor:
         direction: str,
         quantity: float,
         entry_price: float,
-        symbol_info: Dict
+        symbol_info: Dict,
+        position_side: Optional[str] = None
     ) -> Dict:
         """
-        🔴 CORREÇÃO CRÍTICA #2: Executar LIMIT order com proteção de slippage
+        Execute LIMIT order with slippage protection.
+        Handles partial fills by tracking filled quantity and retrying remaining size.
         """
-        
+
         side = 'BUY' if direction == 'LONG' else 'SELL'
-        
-        # Calcular preço LIMIT com buffer
+        remaining_qty = float(quantity)
+        filled_qty = 0.0
+        total_cost = 0.0
+        used_market = False
+
+        # Calculate limit price with buffer
         if direction == 'LONG':
             limit_price = entry_price * (1 + self.limit_order_buffer_pct / 100)
         else:
             limit_price = entry_price * (1 - self.limit_order_buffer_pct / 100)
-        
-        # Arredondar preço
+
         limit_price = round_step_size(limit_price, symbol_info['tick_size'])
-        
+
         logger.info(
-            f"📊 LIMIT Order: {symbol} {side}\n"
+            f"LIMIT Order: {symbol} {side}\n"
             f"  Mark Price: {entry_price:.4f}\n"
             f"  Limit Price: {limit_price:.4f} (+{self.limit_order_buffer_pct}%)\n"
-            f"  Quantity: {quantity:.4f}"
+            f"  Quantity: {remaining_qty:.4f}"
         )
-        
-        # ✅ NOVO: Retry com backoff exponencial
+
         for attempt in range(1, self.max_retries + 1):
             try:
-                # Post-only (maker) opcional com decisão automática por spread
                 tif = 'GTC'
                 place_price = limit_price
                 try:
@@ -725,155 +923,258 @@ class OrderExecutor:
                     use_post_only = force_post_only or (auto_post_only and spread_bps >= spread_threshold)
 
                     if use_post_only and bid_po > 0 and ask_po > 0:
-                        # Garantir maker-only (GTX): posicionar no book do lado passivo
                         if direction == 'LONG':
-                            # Comprar como maker próximo ao bid (ligeiramente abaixo)
                             place_price = round_step_size(min(limit_price, bid_po * (1 - 0.0001)), symbol_info['tick_size'])
                         else:
-                            # Vender como maker próximo ao ask (ligeiramente acima)
                             place_price = round_step_size(max(limit_price, ask_po * (1 + 0.0001)), symbol_info['tick_size'])
                         tif = 'GTX'
                 except Exception as _e:
-                    logger.debug(f"Ajuste maker automático falhou, usando GTC: {_e}")
+                    logger.debug(f"Ajuste maker automatico falhou, usando GTC: {_e}")
                     place_price = limit_price
                     tif = 'GTC'
 
+                order_params = {
+                    "symbol": symbol,
+                    "side": side,
+                    "type": "LIMIT",
+                    "price": place_price,
+                    "quantity": remaining_qty,
+                    "timeInForce": tif
+                }
+                if position_side:
+                    order_params["positionSide"] = position_side
                 order = await asyncio.to_thread(
                     self.client.futures_create_order,
-                    symbol=symbol,
-                    side=side,
-                    type='LIMIT',
-                    price=place_price,
-                    quantity=quantity,
-                    timeInForce=tif  # GTC ou GTX (post-only)
+                    **order_params
                 )
-                
+
                 order_id = order['orderId']
-                
-                logger.info(f"✅ LIMIT Order criada: {order_id}")
-                
-                # Aguardar execução (timeout 10s)
+                logger.info(f"LIMIT order created: {order_id}")
+
                 start_time = time.time()
-                
+                last_status = None
+
                 while time.time() - start_time < self.limit_order_timeout:
                     order_status = await asyncio.to_thread(
                         self.client.futures_get_order,
                         symbol=symbol,
                         orderId=order_id
                     )
-                    
+                    last_status = order_status
+
                     if order_status['status'] == 'FILLED':
-                        avg_price = float(order_status['avgPrice'])
-                        
+                        try:
+                            executed_qty = float(order_status.get('executedQty', 0) or 0)
+                        except Exception:
+                            executed_qty = remaining_qty
+                        if executed_qty <= 0:
+                            executed_qty = remaining_qty
+
+                        avg_price = float(order_status.get('avgPrice', 0) or 0) or float(entry_price)
+                        filled_qty += executed_qty
+                        total_cost += avg_price * executed_qty
+                        remaining_qty = max(0.0, remaining_qty - executed_qty)
+
+                        combined_avg = (total_cost / filled_qty) if filled_qty > 0 else avg_price
                         logger.info(
-                            f"✅ Ordem executada:\n"
-                            f"  Order ID: {order_id}\n"
-                            f"  Avg Price: {avg_price:.4f}"
+                            f"Order filled: id={order_id} avg_price={combined_avg:.4f}"
                         )
-                        
-                        # ✅ NOVO v4.0: Calcular slippage e determinar se é maker
-                        slippage_pct = abs((avg_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
-                        is_maker_order = (tif == 'GTX')
-                        
+
+                        slippage_pct = abs((combined_avg - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+                        is_maker_order = (tif == 'GTX') and not used_market
+
                         return {
                             'success': True,
                             'order_id': order_id,
-                            'avg_price': avg_price,
+                            'avg_price': combined_avg,
                             'order_type': 'LIMIT',
                             'is_maker': is_maker_order,
-                            'slippage': slippage_pct
+                            'slippage': slippage_pct,
+                            'filled_quantity': filled_qty
                         }
-                    
+
                     await asyncio.sleep(0.5)
-                
-                # Timeout: cancelar e decidir próximo passo (re-quote ou fallback)
-                logger.warning(f"⏱️ LIMIT order timeout após {self.limit_order_timeout}s")
-                # ✅ NOVO v4.0: Tracking de re-quotes
+
+                logger.warning(f"LIMIT order timeout after {self.limit_order_timeout}s")
                 self._metrics["re_quotes"] += 1
+
+                if last_status is None:
+                    try:
+                        last_status = await asyncio.to_thread(
+                            self.client.futures_get_order,
+                            symbol=symbol,
+                            orderId=order_id
+                        )
+                    except Exception:
+                        last_status = None
+
+                if last_status and last_status.get('status') in ('PARTIALLY_FILLED', 'FILLED'):
+                    try:
+                        executed_qty = float(last_status.get('executedQty', 0) or 0)
+                    except Exception:
+                        executed_qty = 0.0
+                    if executed_qty > 0:
+                        avg_price = float(last_status.get('avgPrice', 0) or 0) or float(entry_price)
+                        filled_qty += executed_qty
+                        total_cost += avg_price * executed_qty
+                        remaining_qty = max(0.0, remaining_qty - executed_qty)
+
+                        if remaining_qty <= 0:
+                            combined_avg = (total_cost / filled_qty) if filled_qty > 0 else avg_price
+                            slippage_pct = abs((combined_avg - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+                            return {
+                                'success': True,
+                                'order_id': order_id,
+                                'avg_price': combined_avg,
+                                'order_type': 'LIMIT',
+                                'is_maker': (tif == 'GTX') and not used_market,
+                                'slippage': slippage_pct,
+                                'filled_quantity': filled_qty
+                            }
+
                 try:
                     await asyncio.to_thread(self.client.futures_cancel_order, symbol=symbol, orderId=order_id)
-                    logger.info(f"🗑️ LIMIT order cancelada: {order_id}")
+                    logger.info(f"LIMIT order canceled: {order_id}")
                 except Exception as _e:
                     logger.debug(f"Cancelamento da LIMIT falhou/ignorado: {_e}")
 
+                if remaining_qty <= 0:
+                    combined_avg = (total_cost / filled_qty) if filled_qty > 0 else float(entry_price)
+                    slippage_pct = abs((combined_avg - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+                    return {
+                        'success': True,
+                        'order_id': order_id,
+                        'avg_price': combined_avg,
+                        'order_type': 'LIMIT',
+                        'is_maker': (tif == 'GTX') and not used_market,
+                        'slippage': slippage_pct,
+                        'filled_quantity': filled_qty
+                    }
+
                 if attempt < self.max_retries:
-                    # Re-quote inteligente: atualizar preço com base no book atual
                     try:
                         book = await asyncio.to_thread(self.client.futures_orderbook_ticker, symbol=symbol)
                         bid = float(book.get('bidPrice') or 0)
                         ask = float(book.get('askPrice') or 0)
                         if tif == 'GTX' and bid > 0 and ask > 0:
-                            # Maker-only: ficar no lado passivo novamente
                             if direction == 'LONG':
                                 limit_price = round_step_size(min(limit_price, bid * (1 - 0.0001)), symbol_info['tick_size'])
                             else:
                                 limit_price = round_step_size(max(limit_price, ask * (1 + 0.0001)), symbol_info['tick_size'])
                         else:
-                            # GTC: aproximar do mid para aumentar chance de fill
                             mid = (bid + ask) / 2 if (bid > 0 and ask > 0) else limit_price
                             limit_price = round_step_size(mid, symbol_info['tick_size'])
-                        logger.info(f"🔁 Re-quote {attempt+1}/{self.max_retries}: novo LIMIT @ {limit_price:.4f} (tif={tif})")
+                        logger.info(f"Re-quote {attempt+1}/{self.max_retries}: novo LIMIT @ {limit_price:.4f} (tif={tif})")
                     except Exception as _e:
-                        logger.debug(f"Falha ao re-quotar, mantendo preço: {_e}")
-                    # Voltar ao início do loop para nova tentativa
+                        logger.debug(f"Falha ao re-quotar, mantendo preco: {_e}")
                     continue
 
-                # Última tentativa: fallback para MARKET
-                logger.info(f"🔄 Última tentativa: MARKET fallback...")
+                used_market = True
+                market_params = {
+                    "symbol": symbol,
+                    "side": side,
+                    "type": "MARKET",
+                    "quantity": remaining_qty
+                }
+                if position_side:
+                    market_params["positionSide"] = position_side
                 market_order = await asyncio.to_thread(
                     self.client.futures_create_order,
-                    symbol=symbol,
-                    side=side,
-                    type='MARKET',
-                    quantity=quantity
+                    **market_params
                 )
-                # ✅ Corrigir preço de entrada: buscar avg real da execução
                 try:
                     avg_from_api = await binance_client.get_order_avg_price(symbol, market_order['orderId'])
                 except Exception:
                     avg_from_api = 0.0
                 avg_price = float(market_order.get('avgPrice') or 0) or float(avg_from_api or 0) or float(entry_price)
 
-                logger.info(f"✅ MARKET order executada: {market_order['orderId']} @ {avg_price:.4f}")
-                
-                # ✅ NOVO v4.0: Calcular slippage para MARKET
-                slippage_pct = abs((avg_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+                filled_qty += remaining_qty
+                total_cost += avg_price * remaining_qty
+                combined_avg = (total_cost / filled_qty) if filled_qty > 0 else avg_price
+
+                logger.info(f"MARKET order executed: {market_order['orderId']} @ {combined_avg:.4f}")
+
+                slippage_pct = abs((combined_avg - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
 
                 return {
                     'success': True,
                     'order_id': market_order['orderId'],
-                    'avg_price': avg_price,
+                    'avg_price': combined_avg,
                     'order_type': 'MARKET',
                     'is_maker': False,
-                    'slippage': slippage_pct
+                    'slippage': slippage_pct,
+                    'filled_quantity': filled_qty
                 }
-                
-            except Exception as e:
-                logger.error(f"❌ Tentativa {attempt}/{self.max_retries} falhou: {e}")
-                # ✅ NOVO v4.0: Tracking de retries
-                self._metrics["retry_count"] += 1
-                
-                if attempt < self.max_retries:
-                    # Backoff exponencial
-                    delay = self.retry_delay_base * (2 ** (attempt - 1))
-                    logger.info(f"⏳ Aguardando {delay}s antes de retry...")
-                    await asyncio.sleep(delay)
-                else:
+
+            except BinanceAPIException as e:
+                if e.code == -4061:
+                    logger.error("??O Erro FATAL de configuracao (-4061): Mismatch Hedge/One-way Mode. Abortando.")
                     return {
                         'success': False,
-                        'reason': f'Falha após {self.max_retries} tentativas: {str(e)}',
+                        'reason': "FATAL (-4061): Position Mode Mismatch. Verifique se a conta esta em One-Way Mode.",
                         'order_type': 'LIMIT',
                         'is_maker': False,
                         'slippage': 0.0
                     }
-    
+                if e.code == -1003:
+                    logger.error("??O Erro FATAL de Rate Limit (-1003): IP BANIDO. Abortando.")
+                    return {
+                        'success': False,
+                        'reason': "FATAL (-1003): IP Banned by Binance.",
+                        'order_type': 'LIMIT',
+                        'is_maker': False,
+                        'slippage': 0.0
+                    }
+
+                logger.error(f"??O Attempt {attempt}/{self.max_retries} failed (BinanceAPIException): {e}")
+                self._metrics["retry_count"] += 1
+
+                if attempt < self.max_retries:
+                    delay = self.retry_delay_base * (2 ** (attempt - 1))
+                    logger.info(f"??? Waiting {delay}s before retry...")
+                    await asyncio.sleep(delay)
+                else:
+                    return {
+                        'success': False,
+                        'reason': f'Failed after {self.max_retries} attempts: {str(e)}',
+                        'order_type': 'LIMIT',
+                        'is_maker': False,
+                        'slippage': 0.0
+                    }
+
+            except Exception as e:
+                logger.error(f"??O Tentativa {attempt}/{self.max_retries} falhou: {e}")
+                self._metrics["retry_count"] += 1
+
+                if attempt < self.max_retries:
+                    delay = self.retry_delay_base * (2 ** (attempt - 1))
+                    logger.info(f"??? Aguardando {delay}s antes de retry...")
+                    await asyncio.sleep(delay)
+                else:
+                    return {
+                        'success': False,
+                        'reason': f'Falha apos {self.max_retries} tentativas: {str(e)}',
+                        'order_type': 'LIMIT',
+                        'is_maker': False,
+                        'slippage': 0.0
+                    }
+
+        return {
+            'success': False,
+            'reason': 'Failed to execute limit order',
+            'order_type': 'LIMIT',
+            'is_maker': False,
+            'slippage': 0.0
+        }
+
     async def _execute_iceberg_order(
         self,
         symbol: str,
         direction: str,
         quantity: float,
         entry_price: float,
-        symbol_info: Dict
+        symbol_info: Dict,
+        position_side: Optional[str] = None
     ) -> Dict:
         """
         ✅ NOVO: Executar ordem em chunks (ICEBERG)
@@ -915,7 +1216,8 @@ class OrderExecutor:
                 direction=direction,
                 quantity=chunk_qty,
                 entry_price=entry_price,
-                symbol_info=symbol_info
+                symbol_info=symbol_info,
+                position_side=position_side
             )
             
             if not chunk_result['success']:
@@ -964,7 +1266,8 @@ class OrderExecutor:
         direction: str,
         quantity: float,
         stop_price: float,
-        symbol_info: Dict
+        symbol_info: Dict,
+        position_side: Optional[str] = None
     ) -> Dict:
         """Configurar stop loss"""
         
@@ -975,15 +1278,20 @@ class OrderExecutor:
             stop_price = round_step_size(stop_price, symbol_info['tick_size'])
             
             workingType = 'MARK_PRICE' if self.settings.USE_MARK_PRICE_FOR_STOPS else 'CONTRACT_PRICE'
+            order_params = {
+                "symbol": symbol,
+                "side": side,
+                "type": "STOP_MARKET",
+                "stopPrice": stop_price,
+                "quantity": quantity,
+                "timeInForce": "GTC",
+                "workingType": workingType
+            }
+            if position_side:
+                order_params["positionSide"] = position_side
             order = await asyncio.to_thread(
                 self.client.futures_create_order,
-                symbol=symbol,
-                side=side,
-                type='STOP_MARKET',
-                stopPrice=stop_price,
-                quantity=quantity,
-                reduceOnly=True,
-                workingType=workingType
+                **order_params
             )
             
             logger.info(f"✅ Stop loss configurado: {stop_price:.4f}")
@@ -993,6 +1301,17 @@ class OrderExecutor:
                 'order_id': order['orderId']
             }
             
+
+            
+        except BinanceAPIException as e:
+            if e.code == -4120:
+                logger.warning(f"⚠️ Exchange recusou Stop Loss ({e.message}). Dependendo do Monitor de Posição (Software Stop).")
+                return {'success': False, 'reason': f"Exchange Stop Rejected: {e.message}"}
+            logger.error(f"❌ Erro ao configurar stop loss: {e}")
+            return {
+                'success': False,
+                'reason': str(e)
+            }
         except Exception as e:
             logger.error(f"❌ Erro ao configurar stop loss: {e}")
             return {
@@ -1006,24 +1325,35 @@ class OrderExecutor:
         direction: str,
         quantity: float,
         take_profit: float,
-        symbol_info: Dict
+        symbol_info: Dict,
+        position_side: Optional[str] = None
     ) -> Dict:
         """Configurar take profit via LIMIT reduceOnly"""
         try:
             side = 'SELL' if direction == 'LONG' else 'BUY'
             price = round_step_size(take_profit, symbol_info['tick_size'])
+            order_params = {
+                "symbol": symbol,
+                "side": side,
+                "type": "LIMIT",
+                "price": price,
+                "timeInForce": "GTC",
+                "quantity": quantity
+            }
+            if position_side:
+                order_params["positionSide"] = position_side
             order = await asyncio.to_thread(
                 self.client.futures_create_order,
-                symbol=symbol,
-                side=side,
-                type='LIMIT',
-                price=price,
-                timeInForce='GTC',
-                quantity=quantity,
-                reduceOnly=True
+                **order_params
             )
             logger.info(f"✅ Take Profit LIMIT configurado: {price:.4f}")
             return {"success": True, "order_id": order['orderId']}
+        except BinanceAPIException as e:
+            if e.code == -4120:
+                logger.warning(f"⚠️ Exchange recusou Limit TP ({e.message}). Dependendo do Monitor de Posição.")
+                return {'success': False, 'reason': f"Exchange Limit TP Rejected: {e.message}"}
+            logger.error(f"❌ Erro ao configurar take profit: {e}")
+            return {"success": False, "reason": str(e)}
         except Exception as e:
             logger.error(f"❌ Erro ao configurar take profit: {e}")
             return {"success": False, "reason": str(e)}
@@ -1034,7 +1364,8 @@ class OrderExecutor:
         direction: str,
         quantity: float,
         entry_price: float,
-        symbol_info: Dict
+        symbol_info: Dict,
+        position_side: Optional[str] = None
     ) -> Dict:
         """Configurar trailing stop com callbackRate calibrado por ATR"""
         try:
@@ -1050,18 +1381,29 @@ class OrderExecutor:
             callback_rate = round(callback_rate, 1)
 
             workingType = 'MARK_PRICE' if self.settings.USE_MARK_PRICE_FOR_STOPS else 'CONTRACT_PRICE'
+            order_params = {
+                "symbol": symbol,
+                "side": side,
+                "type": "TRAILING_STOP_MARKET",
+                "callbackRate": callback_rate,
+                "timeInForce": "GTC",
+                "workingType": workingType,
+                "quantity": quantity
+            }
+            if position_side:
+                order_params["positionSide"] = position_side
             order = await asyncio.to_thread(
                 self.client.futures_create_order,
-                symbol=symbol,
-                side=side,
-                type='TRAILING_STOP_MARKET',
-                callbackRate=callback_rate,
-                reduceOnly=True,
-                workingType=workingType,
-                quantity=quantity
+                **order_params
             )
             logger.info(f"✅ Trailing Stop configurado (callback {callback_rate:.1f}% • {workingType})")
             return {"success": True, "order_id": order['orderId']}
+        except BinanceAPIException as e:
+            if e.code == -4120:
+                logger.warning(f"⚠️ Exchange recusou Trailing Stop ({e.message}).")
+                return {'success': False, 'reason': f"Trailing Stop Rejected: {e.message}"}
+            logger.error(f"❌ Erro ao configurar trailing stop: {e}")
+            return {"success": False, "reason": str(e)}
         except Exception as e:
             logger.error(f"❌ Erro ao configurar trailing stop: {e}")
             return {"success": False, "reason": str(e)}
@@ -1076,14 +1418,23 @@ class OrderExecutor:
         
         try:
             side = 'SELL' if direction == 'LONG' else 'BUY'
-            
+            position_side = None
+            try:
+                position_side = await binance_client.get_position_side(direction)
+            except Exception as e:
+                logger.debug(f"Position side lookup failed: {e}")
+
+            order_params = {
+                "symbol": symbol,
+                "side": side,
+                "type": "MARKET",
+                "quantity": quantity
+            }
+            if position_side:
+                order_params["positionSide"] = position_side
             order = await asyncio.to_thread(
                 self.client.futures_create_order,
-                symbol=symbol,
-                side=side,
-                type='MARKET',
-                quantity=quantity,
-                reduceOnly=True
+                **order_params
             )
             
             avg_price = float(order.get('avgPrice', 0))

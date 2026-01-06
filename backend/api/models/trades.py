@@ -50,7 +50,30 @@ class Trade(Base):
     pyramided = Column(Boolean, nullable=True, default=False)
     partial_taken = Column(Boolean, nullable=True, default=False)
     dca_count = Column(Integer, nullable=True, default=0)  # ✅ NOVO: Contador de DCA
-    
+
+    # ✅ PROFIT OPTIMIZATION - Fee Tracking (CRÍTICO para P&L real)
+    entry_fee = Column(Float, nullable=True, default=0.0)
+    exit_fee = Column(Float, nullable=True, default=0.0)
+    funding_cost = Column(Float, nullable=True, default=0.0)
+    net_pnl = Column(Float, nullable=True, default=0.0)  # P&L após TODAS as fees
+
+    # ✅ EXECUTION TYPE TRACKING
+    is_maker_entry = Column(Boolean, nullable=True, default=False)
+    is_maker_exit = Column(Boolean, nullable=True, default=False)
+
+    # ✅ BREAKEVEN PROTECTION
+    breakeven_price = Column(Float, nullable=True)
+    breakeven_stop_activated = Column(Boolean, nullable=True, default=False)
+
+    # ✅ MARKET INTELLIGENCE SCORES
+    market_sentiment_score = Column(Integer, nullable=True)  # -50 to +50
+    top_trader_ratio = Column(Float, nullable=True)
+    liquidation_proximity = Column(String, nullable=True)  # 'BULL_ZONE' | 'BEAR_ZONE' | 'NEUTRAL'
+
+    # ✅ FUNDING TRACKING
+    funding_periods_held = Column(Integer, nullable=True, default=0)
+    entry_time = Column(DateTime(timezone=True), nullable=True)  # Para cálculo de funding
+
     # Campos adicionais para historico
     exit_price = Column(Float, nullable=True)
     exit_time = Column(DateTime(timezone=True), nullable=True)

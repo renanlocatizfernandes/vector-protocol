@@ -86,26 +86,26 @@ export const PositionsTable: React.FC = () => {
     const rows = agg ? aggRows : (data?.open_trades || []);
 
     return (
-        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-dark-700/50">
+        <Card className="glass-card border-white/10 bg-white/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-6 border-b border-white/10">
                 <CardTitle className="text-lg font-semibold flex items-center gap-2">
                     <Layers className="h-5 w-5 text-primary" /> Open Positions
                 </CardTitle>
                 <div className="flex items-center gap-4">
-                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none text-muted-foreground hover:text-white transition-colors p-2 rounded-md hover:bg-dark-800">
+                    <label className="flex items-center gap-2 text-xs font-medium cursor-pointer select-none text-muted-foreground hover:text-white transition-colors p-2 rounded-md hover:bg-white/5">
                         <input
                             type="checkbox"
                             checked={agg}
                             onChange={e => setAgg(e.target.checked)}
-                            className="rounded border-dark-600 bg-dark-800 text-primary focus:ring-primary h-4 w-4"
+                            className="rounded border-white/10 bg-white/5 text-primary focus:ring-primary h-4 w-4"
                         />
                         <Filter className="w-3 h-3" /> Group by Symbol
                     </label>
                     <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={loading} className="h-8 text-xs border-dark-600 hover:bg-dark-800">
+                        <Button variant="outline" size="sm" onClick={() => handleSync(false)} disabled={loading} className="h-8 text-xs border-white/10 hover:bg-white/5">
                             <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Sync
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleSync(true)} disabled={loading} className="h-8 text-xs border-dark-600 hover:bg-dark-800">
+                        <Button variant="outline" size="sm" onClick={() => handleSync(true)} disabled={loading} className="h-8 text-xs border-white/10 hover:bg-white/5">
                             <RefreshCw className={cn("mr-2 h-3 w-3", loading && "animate-spin")} /> Strict Sync
                         </Button>
                     </div>
@@ -125,8 +125,8 @@ export const PositionsTable: React.FC = () => {
 
                 <div className="rounded-none border-0">
                     <Table>
-                        <TableHeader className="bg-dark-800/50">
-                            <TableRow className="border-dark-700/50 hover:bg-transparent">
+                        <TableHeader className="bg-white/5">
+                            <TableRow className="border-white/10 hover:bg-transparent">
                                 <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Symbol</TableHead>
                                 <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Direction</TableHead>
                                 <TableHead className="text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Entry Price</TableHead>
@@ -139,9 +139,9 @@ export const PositionsTable: React.FC = () => {
                         <TableBody>
                             {rows.length > 0 ? (
                                 rows.map((row: any) => (
-                                    <TableRow key={row.id} className="border-dark-700/50 hover:bg-dark-800/50 transition-colors">
+                                    <TableRow key={row.id} className="border-white/10 hover:bg-white/5 transition-colors">
                                         <TableCell className="font-mono font-bold text-white flex items-center gap-2">
-                                            <div className="w-8 h-8 rounded-full bg-dark-800 flex items-center justify-center text-[10px] text-muted-foreground">
+                                            <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-[10px] text-muted-foreground">
                                                 Coin
                                             </div>
                                             {row.symbol}
@@ -199,7 +199,7 @@ export const PositionsTable: React.FC = () => {
                 </div>
 
                 {/* Footer Stats */}
-                <div className="bg-dark-900/50 p-4 border-t border-dark-700/50 flex flex-wrap gap-6 text-sm">
+                <div className="bg-white/5 p-4 border-t border-white/10 flex flex-wrap gap-6 text-sm">
                     <div className="flex flex-col gap-1">
                         <span className="text-xs text-muted-foreground uppercase">Total Exposure</span>
                         <span className="font-mono text-white font-bold">${data?.portfolio?.exposure_total || '0.00'}</span>
@@ -208,7 +208,7 @@ export const PositionsTable: React.FC = () => {
                         <span className="text-xs text-muted-foreground uppercase">Unrealized PnL</span>
                         <span className={cn(
                             "font-mono font-bold text-lg",
-                            data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-success drop-shadow-[0_0_8px_rgba(0,255,157,0.3)]' : 'text-danger drop-shadow-[0_0_8px_rgba(255,77,77,0.3)]'
+                            data?.portfolio?.unrealized_pnl_total >= 0 ? 'text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]' : 'text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]'
                         )}>
                             {data?.portfolio?.unrealized_pnl_total ? (data?.portfolio?.unrealized_pnl_total >= 0 ? '+' : '') + data?.portfolio?.unrealized_pnl_total : '0.00'}
                         </span>

@@ -6,10 +6,19 @@ import { PositionsTable } from '../components/PositionsTable'; // Keeping existi
 
 export const Dashboard: React.FC = () => {
   return (
-    <div className="space-y-6 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-fade-in">
+      <header className="flex flex-col gap-2">
+        <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Command Center</span>
+        <h1 className="text-3xl font-semibold text-white">Trading Overview</h1>
+        <p className="text-muted-foreground">Status, performance, and active exposure at a glance.</p>
+      </header>
+
+      <div className="rounded-xl border border-warning/30 bg-warning/10 text-warning px-4 py-3 text-sm">
+        Whitelist enforced: the bot can monitor any open position, but new entries only execute for symbols in the whitelist.
+      </div>
 
       {/* Top Section: Status & Performance */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
         {/* Left: Status & Controls */}
         <div className="flex flex-col gap-6">
           <BotStatus />
@@ -21,16 +30,21 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Manual Trade Section - Possibly move to a dialog or keep here? Keeping here for now */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Manual Trade Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
         <div className="lg:col-span-1">
           <ManualTrade />
         </div>
       </div>
 
       {/* Bottom: Positions */}
-      <div>
-        <h2 className="text-xl font-bold mb-4 text-white pl-1 border-l-4 border-primary">Active Positions</h2>
+      <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
+        <div className="flex items-center gap-3 mb-4 pl-1">
+          <div className="w-1 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(42,212,198,0.35)]" />
+          <h2 className="text-xl font-semibold text-white">
+            Active Positions
+          </h2>
+        </div>
         <PositionsTable />
       </div>
     </div>

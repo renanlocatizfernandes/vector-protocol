@@ -9,8 +9,8 @@ const badgeVariants = (variant: string = "default") => {
         secondary: "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80",
         outline: "text-foreground",
-        success: "border-transparent bg-green-500/15 text-green-500 hover:bg-green-500/25",
-        warning: "border-transparent bg-yellow-500/15 text-yellow-500 hover:bg-yellow-500/25",
+        success: "border-transparent bg-success/15 text-success hover:bg-success/25",
+        warning: "border-transparent bg-warning/15 text-warning hover:bg-warning/25",
     }
 
     return cn(base, variants[variant])

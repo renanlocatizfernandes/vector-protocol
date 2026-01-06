@@ -17,7 +17,10 @@ class BotConfig:
         self.scan_interval = int(getattr(self.settings, "BOT_SCAN_INTERVAL_MINUTES", 1)) * 60
         self.max_positions = int(getattr(self.settings, "BOT_MAX_POSITIONS", 10))
         self.pyramiding_enabled = bool(getattr(self.settings, "PYRAMIDING_ENABLED", True))
-        self.symbols_to_scan = list(getattr(self.settings, "TESTNET_WHITELIST", []))
+        symbols = list(getattr(self.settings, "SYMBOL_WHITELIST", []))
+        if not symbols:
+            symbols = list(getattr(self.settings, "TESTNET_WHITELIST", []))
+        self.symbols_to_scan = symbols
         
         # Propagar para módulos
         from modules.market_scanner import market_scanner

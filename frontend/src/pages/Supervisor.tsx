@@ -100,19 +100,20 @@ export default function Supervisor() {
   const supEnabled = !!sup?.enabled;
 
   if (loading && !health) {
-    return <div className="animate-pulse h-96 bg-dark-800/50 rounded-xl" />;
+    return <div className="animate-pulse h-96 bg-white/5 rounded-xl" />;
   }
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* HERO */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-white mb-2">System Supervisor</h1>
+        <div className="space-y-2">
+          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Operations</span>
+          <h1 className="text-3xl font-semibold text-white">System Supervisor</h1>
           <p className="text-muted-foreground">Automated health monitoring and process management.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={refreshSup} disabled={supLoading} className="border-dark-700 hover:bg-dark-800">
+          <Button variant="outline" size="sm" onClick={refreshSup} disabled={supLoading} className="border-white/10 hover:bg-white/5">
             <RefreshCw className={cn("mr-2 h-4 w-4", supLoading && "animate-spin")} /> Refresh
           </Button>
           <a
@@ -127,20 +128,20 @@ export default function Supervisor() {
       </div>
 
       <div className="flex flex-wrap gap-4">
-        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", apiHealthy ? "text-success bg-success/10" : "text-danger bg-danger/10")}>
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-white/10", apiHealthy ? "text-success bg-success/10" : "text-danger bg-danger/10")}>
           <Activity className="w-3 h-3 mr-2" /> API: {health?.status || "—"}
         </Badge>
-        <Badge variant="outline" className="px-3 py-1 text-sm border-dark-700 text-muted-foreground">
+        <Badge variant="outline" className="px-3 py-1 text-sm border-white/10 text-muted-foreground">
           v{health?.version || "—"}
         </Badge>
-        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", botRunning ? "text-success bg-success/10" : "text-muted-foreground")}>
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-white/10", botRunning ? "text-success bg-success/10" : "text-muted-foreground")}>
           <Zap className="w-3 h-3 mr-2" /> Bot: {botRunning ? "Running" : "Stopped"}
         </Badge>
-        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-dark-700", supEnabled ? "text-primary bg-primary/10" : "text-muted-foreground")}>
+        <Badge variant="outline" className={cn("px-3 py-1 text-sm border-white/10", supEnabled ? "text-primary bg-primary/10" : "text-muted-foreground")}>
           <Shield className="w-3 h-3 mr-2" /> Supervisor: {supEnabled ? "Active" : "Disabled"}
         </Badge>
         {supHealth && (
-          <Badge variant="outline" className="px-3 py-1 text-sm border-dark-700 text-muted-foreground">
+          <Badge variant="outline" className="px-3 py-1 text-sm border-white/10 text-muted-foreground">
             Restarts: {supHealth.restarts}
           </Badge>
         )}
@@ -148,7 +149,7 @@ export default function Supervisor() {
 
       <div className="flex gap-3">
         <Button
-          className="bg-green-600 hover:bg-green-700 text-white shadow-[0_0_15px_rgba(22,163,74,0.4)]"
+          className="bg-primary hover:bg-primary/90 text-dark-950 shadow-[0_0_18px_rgba(42,212,198,0.35)]"
           disabled={opBusy}
           onClick={() => setSupervisor("enable")}
         >
@@ -166,8 +167,8 @@ export default function Supervisor() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Heartbeats */}
-        <Card className="border-primary/20 bg-dark-900/40 backdrop-blur-xl">
-          <CardHeader className="pb-4 border-b border-dark-700/50">
+        <Card className="glass-card border-primary/20 bg-white/5">
+          <CardHeader className="pb-4 border-b border-white/10">
             <CardTitle className="flex items-center gap-2 text-white">
               <HeartPulse className="h-5 w-5 text-danger animate-pulse" /> Component Health
             </CardTitle>
@@ -181,11 +182,11 @@ export default function Supervisor() {
             ) : (
               <div className="space-y-3">
                 {Object.entries(supHealth.components).map(([comp, data]) => (
-                  <div key={comp} className="flex justify-between items-center text-sm p-2 rounded-lg bg-dark-800/50 border border-dark-700/30">
+                  <div key={comp} className="flex justify-between items-center text-sm p-2 rounded-lg bg-white/5 border border-white/10">
                     <span className="capitalize font-medium text-white">{comp.replace("_loop", "")}</span>
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">{data.last_heartbeat_ago}</span>
-                      <div className={cn("h-2 w-2 rounded-full", data.status === "ok" ? "bg-success shadow-[0_0_8px_rgba(0,255,157,0.6)]" : "bg-danger")} />
+                      <div className={cn("h-2 w-2 rounded-full", data.status === "ok" ? "bg-success shadow-[0_0_8px_rgba(43,212,165,0.6)]" : "bg-danger")} />
                     </div>
                   </div>
                 ))}
@@ -195,10 +196,10 @@ export default function Supervisor() {
         </Card>
 
         {/* Resources */}
-        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
-          <CardHeader className="pb-4 border-b border-dark-700/50">
+        <Card className="glass-card border-white/10 bg-white/5">
+          <CardHeader className="pb-4 border-b border-white/10">
             <CardTitle className="flex items-center gap-2 text-white">
-              <Cpu className="h-5 w-5 text-bg-blue-500 text-primary" /> System Resources
+              <Cpu className="h-5 w-5 text-primary" /> System Resources
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
@@ -214,9 +215,9 @@ export default function Supervisor() {
                     <span className="text-muted-foreground">CPU Load</span>
                     <span className="font-mono text-white">{supHealth.system.cpu_percent.toFixed(1)}%</span>
                   </div>
-                  <div className="h-2 bg-dark-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary/80 shadow-[0_0_10px_rgba(0,240,255,0.4)] transition-all duration-500"
+                      className="h-full bg-primary/80 shadow-[0_0_10px_rgba(42,212,198,0.4)] transition-all duration-500"
                       style={{ width: `${Math.min(supHealth.system.cpu_percent, 100)}%` }}
                     />
                   </div>
@@ -226,9 +227,9 @@ export default function Supervisor() {
                     <span className="text-muted-foreground">Memory Usage</span>
                     <span className="font-mono text-white">{supHealth.system.memory_mb.toFixed(0)} MB</span>
                   </div>
-                  <div className="h-2 bg-dark-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-accent/80 shadow-[0_0_10px_rgba(112,0,255,0.4)] transition-all duration-500"
+                      className="h-full bg-accent/80 shadow-[0_0_10px_rgba(245,159,58,0.4)] transition-all duration-500"
                       style={{ width: `${Math.min((supHealth.system.memory_mb / 1024) * 100, 100)}%` }}
                     />
                   </div>
@@ -239,8 +240,8 @@ export default function Supervisor() {
         </Card>
 
         {/* Alerts / Interventions */}
-        <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
-          <CardHeader className="pb-4 border-b border-dark-700/50">
+        <Card className="glass-card border-white/10 bg-white/5">
+          <CardHeader className="pb-4 border-b border-white/10">
             <CardTitle className="flex items-center gap-2 text-white">
               <Shield className="h-5 w-5 text-warning" /> Interventions
             </CardTitle>
@@ -252,11 +253,11 @@ export default function Supervisor() {
                 <span className="font-mono text-white">{fmtDate(sup?.last_intervention_at)}</span>
               </div>
 
-              <div className="bg-dark-950 rounded-lg border border-dark-800 p-3 h-32 overflow-y-auto scrollbar-thin scrollbar-thumb-dark-700">
+              <div className="bg-dark-950 rounded-lg border border-white/10 p-3 h-32 overflow-y-auto">
                 <ul className="text-xs font-mono space-y-1 text-muted-foreground">
                   {(sup?.interventions_tail || []).length > 0 ? (
                     (sup?.interventions_tail || []).map((line, i) => (
-                      <li key={i} className="border-b border-dark-800/50 pb-1 last:border-0">{line}</li>
+                      <li key={i} className="border-b border-white/10 pb-1 last:border-0">{line}</li>
                     ))
                   ) : (
                     <li className="italic opacity-50 text-center py-8">No recent interventions</li>
@@ -269,8 +270,8 @@ export default function Supervisor() {
       </div>
 
       {/* Docker Status */}
-      <Card className="border-dark-700/50 bg-dark-900/40 backdrop-blur-xl">
-        <CardHeader className="border-b border-dark-700/50 pb-4">
+      <Card className="glass-card border-white/10 bg-white/5">
+        <CardHeader className="border-b border-white/10 pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2 text-white">
               <Server className="h-5 w-5 text-muted-foreground" /> Infrastructure Status

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+﻿from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 from datetime import datetime
@@ -20,8 +20,8 @@ INTERVENTIONS_LOG = LOGS_DIR / "supervisor_interventions.log"
 
 def _latest_log_file(prefix: str) -> Optional[Path]:
     """
-    Retorna o arquivo de log mais provável pelo prefixo do logger.
-    Tenta o arquivo do dia (ex: api_YYYYMMDD.log), senão pega o mais recente por glob.
+    Retorna o arquivo de log mais provÃ¡vel pelo prefixo do logger.
+    Tenta o arquivo do dia (ex: api_YYYYMMDD.log), senÃ£o pega o mais recente por glob.
     """
     today = datetime.now().strftime("%Y%m%d")
     candidate = LOGS_DIR / f"{prefix}_{today}.log"
@@ -36,8 +36,8 @@ def _latest_log_file(prefix: str) -> Optional[Path]:
 
 def _tail_lines(path: Path, n: int) -> List[str]:
     """
-    Tail simples por linhas. Para arquivos grandes isso é O(N),
-    mas para logs típicos do serviço é suficiente.
+    Tail simples por linhas. Para arquivos grandes isso Ã© O(N),
+    mas para logs tÃ­picos do serviÃ§o Ã© suficiente.
     """
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -47,19 +47,19 @@ def _tail_lines(path: Path, n: int) -> List[str]:
         raise HTTPException(status_code=500, detail=f"Erro ao ler log: {e}")
 
 
-@router.get("/logs", summary="Tail de logs do serviço")
+@router.get("/logs", summary="Tail de logs do serviÃ§o")
 async def get_logs(component: str = Query(default="api", description="Prefixo do logger (ex: api, trading_routes, market_routes)"),
                    tail: int = Query(default=DEFAULT_TAIL, ge=1, le=5000)):
     """
-    Retorna as últimas N linhas do arquivo de log com o prefixo informado.
-    Em Docker, os logs ficam em /logs e são montados para ./logs no host.
+    Retorna as Ãºltimas N linhas do arquivo de log com o prefixo informado.
+    Em Docker, os logs ficam em /logs e sÃ£o montados para ./logs no host.
     """
     if not LOGS_DIR.exists():
-        raise HTTPException(status_code=404, detail=f"Pasta de logs não encontrada: {LOGS_DIR}")
+        raise HTTPException(status_code=404, detail=f"Pasta de logs nÃ£o encontrada: {LOGS_DIR}")
 
     log_file = _latest_log_file(component)
     if not log_file or not log_file.exists():
-        raise HTTPException(status_code=404, detail=f"Arquivo de log não encontrado para '{component}'")
+        raise HTTPException(status_code=404, detail=f"Arquivo de log nÃ£o encontrado para '{component}'")
 
     lines = _tail_lines(log_file, tail)
     return {
@@ -70,13 +70,16 @@ async def get_logs(component: str = Query(default="api", description="Prefixo do
     }
 
 
-@router.get("/compose", summary="Status do Docker Compose (melhor esforço)")
+@router.get("/compose", summary="Status do Docker Compose (melhor esforco)")
 async def compose_status():
     """
-    Retorna o resultado de `docker ps` formatado (se disponível).
+    Retorna o resultado de `docker ps` formatado (se disponivel).
     Em containers sem acesso ao Docker (sem /var/run/docker.sock), retorna 501.
     """
-    # Verifica se 'docker' está disponível no PATH
+    if not Path("/var/run/docker.sock").exists():
+        raise HTTPException(status_code=501, detail="Docker socket nao disponivel no container")
+
+    # Verifica se 'docker' esta disponivel no PATH
     docker_bin = None
     for candidate in ("docker", "/usr/bin/docker", "/usr/local/bin/docker"):
         if os.path.exists(candidate):
@@ -84,10 +87,10 @@ async def compose_status():
             break
 
     if docker_bin is None:
-        raise HTTPException(status_code=501, detail="Docker não disponível no ambiente da API")
+        raise HTTPException(status_code=501, detail="Docker nao disponivel no ambiente da API")
 
     try:
-        # Usa --format para JSON-like por linha; vamos fazer parse simples por tabs se simplificar
+        # Usa --format para JSON-like por linha; parse simples por tabs se simplificar
         cmd = [docker_bin, "ps", "--format", "{{.Names}}|||{{.Status}}|||{{.Ports}}"]
         cp = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
         if cp.returncode != 0:
@@ -102,18 +105,13 @@ async def compose_status():
             else:
                 items.append({"raw": ln})
 
-        return {
-            "ok": True,
-            "items": items,
-            "count": len(items)
-        }
+        return {"ok": True, "items": items, "count": len(items)}
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Timeout ao executar docker ps")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-@router.get("/supervisor/status", summary="Status do Supervisor (flag + últimas intervenções)")
+@router.get("/supervisor/status", summary="Status do Supervisor (flag + Ãºltimas intervenÃ§Ãµes)")
 async def supervisor_status(tail: int = Query(default=50, ge=1, le=2000)):
     enabled = True
     try:
@@ -141,7 +139,7 @@ async def supervisor_status(tail: int = Query(default=50, ge=1, le=2000)):
     }
 
 
-@router.get("/supervisor/health", summary="Relatório de saúde do Supervisor")
+@router.get("/supervisor/health", summary="RelatÃ³rio de saÃºde do Supervisor")
 async def supervisor_health():
     """Retorna status detalhado do Supervisor (heartbeats, recursos, restarts)"""
     from modules.supervisor import supervisor
@@ -199,12 +197,12 @@ async def userstream_start():
     Retorna imediatamente com o status atual/previsto.
     """
     try:
-        # Se já estiver rodando, apenas reporta
+        # Se jÃ¡ estiver rodando, apenas reporta
         current = await binance_client.get_user_stream_status()
         if bool(current.get("running")):
             return {"ok": True, **current}
 
-        # Iniciar de forma síncrona (rápida) e retornar status atualizado
+        # Iniciar de forma sÃ­ncrona (rÃ¡pida) e retornar status atualizado
         status = await binance_client.start_user_stream()
         return {"ok": True, **status}
     except Exception as e:
@@ -218,3 +216,4 @@ async def userstream_stop():
         return {"ok": True, **status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+

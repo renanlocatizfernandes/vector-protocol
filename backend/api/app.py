@@ -1,21 +1,49 @@
 # backend/api/app.py
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from models.database import engine, Base, SessionLocal
 from api.models import trades
 from api.routes import positions, config, market, trading, system
-from api import backtesting
+from api import backtesting, websocket
 from utils.logger import setup_logger
 from config.settings import get_settings
 from sqlalchemy import text
 from pathlib import Path
 import asyncio
 import redis
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 # Setup logger
 logger = setup_logger("api")
+
+PUBLIC_PATHS = {
+    "/",
+    "/health",
+    "/version",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+}
+
+
+class ApiKeyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        settings = get_settings()
+        if not getattr(settings, "API_AUTH_ENABLED", False):
+            return await call_next(request)
+
+        if request.url.path in PUBLIC_PATHS or request.url.path.startswith("/docs"):
+            return await call_next(request)
+
+        header_name = getattr(settings, "API_KEY_HEADER", "X-API-Key")
+        api_key = request.headers.get(header_name)
+        if not api_key or api_key != getattr(settings, "API_KEY", ""):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -53,13 +81,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Falha ao iniciar auto-sync: {e}")
 
-    # Auto-start do bot se habilitado nas settings (sem parar containers)
+
+
+    # ✅ Inicializar Binance Client Streams (Independente do Bot)
+    try:
+        from utils.binance_client import binance_client
+        # Garantir One-Way Mode
+        await binance_client.ensure_position_mode(dual_side=False)
+    except Exception as e:
+        logger.error(f"Falha ao garantir Position Mode: {e}")
+
+    try:
+        from utils.binance_client import binance_client
+        # Iniciar Market Stream (WebSocket de Preços)
+        await binance_client.start_market_stream()
+    except Exception as e:
+        logger.error(f"Falha ao iniciar streams da Binance: {e}")
+
+    # Auto-start do bot se habilitado nas settings
     try:
         settings = get_settings()
         if getattr(settings, "AUTOSTART_BOT", False):
             from modules.autonomous_bot import autonomous_bot
 
-            # Aplicar configurações BOT_* antes de iniciar
             try:
                 autonomous_bot.min_score = int(getattr(settings, "BOT_MIN_SCORE", 0))
             except Exception:
@@ -129,6 +173,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Falha ao iniciar watchdog do bot: {e}")
 
+    # WebSocket Redis Listener
+    try:
+        app.state.redis_listener_task = asyncio.create_task(websocket.redis_event_listener())
+        logger.info("🟢 WebSocket Redis Event Listener iniciado")
+    except Exception as e:
+        logger.error(f"Falha ao iniciar Redis listener: {e}")
+
     yield
     
     # Shutdown
@@ -156,6 +207,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Falha ao desligar watchdog: {e}")
 
+    try:
+        task = getattr(app.state, "redis_listener_task", None)
+        if task:
+            task.cancel()
+            try:
+                await task
+            except Exception:
+                pass
+            logger.info("🟡 WebSocket Redis Listener cancelado")
+    except Exception as e:
+        logger.error(f"Falha ao desligar Redis listener: {e}")
+
     logger.info("🔴 Encerrando aplicação...")
 
 
@@ -177,6 +240,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ApiKeyMiddleware)
 
 
 # ✅ Rotas existentes
@@ -213,84 +277,8 @@ async def root():
 # ✅ REAL-TIME WEBSOCKETS (Phase 3)
 # ==========================================
 
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception:
-                pass
-
-manager = ConnectionManager()
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        # Subscribe to Redis channel for bot events
-        settings = get_settings()
-        r = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            decode_responses=True
-        )
-        pubsub = r.pubsub()
-        pubsub.subscribe('bot_events')
-        
-        # Loop to read from Redis and send to WebSocket
-        # Note: This is a simple implementation. In production, we might want a separate background task
-        # broadcasting to the manager, rather than each WS connection having its own Redis sub loop.
-        # But for now, let's do a shared broadcast loop or just listen for client messages.
-        # Actually, to be efficient, we should have ONE Redis listener broadcasting to ALL websockets.
-        
-        # Better approach: The client just listens. The SERVER (app) should have a background task 
-        # that listens to Redis and uses 'manager.broadcast'.
-        
-        while True:
-            # Keep connection alive and handle incoming messages (ping/pong)
-            data = await websocket.receive_text()
-            # Optional: Handle commands from frontend via WS
-            if data == "ping":
-                await websocket.send_text("pong")
-                
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-    except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
-
-# Background task to forward Redis events to WebSockets
-@app.on_event("startup")
-async def start_redis_listener():
-    async def redis_reader():
-        try:
-            settings = get_settings()
-            r = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                decode_responses=True
-            )
-            pubsub = r.pubsub()
-            pubsub.subscribe('bot_events')
-            
-            for message in pubsub.listen():
-                if message['type'] == 'message':
-                    await manager.broadcast(message['data'])
-        except Exception as e:
-            logger.error(f"Redis Listener Error: {e}")
-
-    # Run in background
-    asyncio.create_task(redis_reader())
+# ✅ REAL-TIME WEBSOCKETS (Phase 3)
+app.include_router(websocket.router, tags=["WebSocket"])
 
 
 @app.get("/health", tags=["Health"])

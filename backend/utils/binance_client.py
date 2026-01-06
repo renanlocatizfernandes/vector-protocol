@@ -2,12 +2,13 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from config.settings import get_settings
 from utils.logger import setup_logger
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable, Any
 import asyncio
 import contextlib
 from binance.streams import ThreadedWebsocketManager
 import json
 import websockets
+import redis.asyncio as redis
 
 logger = setup_logger("binance_client")
 
@@ -17,6 +18,21 @@ class BinanceClientManager:
         self.api_key = settings.BINANCE_API_KEY
         self.api_secret = settings.BINANCE_API_SECRET
         self.testnet = settings.BINANCE_TESTNET
+        
+        # Redis Cache Connection
+        try:
+            self.redis = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                decode_responses=True
+            )
+            self.cache_enabled = getattr(settings, 'CACHE_ENABLED', True)
+            logger.info(f"Redis cache inicializado (enabled={self.cache_enabled})")
+        except Exception as e:
+            logger.warning(f"Redis não disponível, cache desabilitado: {e}")
+            self.redis = None
+            self.cache_enabled = False
+        
         # Estado do User Data Stream
         self._twm: Optional[ThreadedWebsocketManager] = None
         self._listen_key: Optional[str] = None
@@ -27,8 +43,13 @@ class BinanceClientManager:
         # contador simples para logar primeiras mensagens cruas do WS
         self._ws_msg_count: int = 0
         
-        # Inicializar cliente
-        # Inicializar cliente
+        # Estado do Market Stream
+        self._market_stream_running: bool = False
+        self._market_ws_task: Optional[asyncio.Task] = None
+        # Position mode cache (False = One-Way, True = Hedge)
+        self._dual_side_mode: Optional[bool] = None
+        
+        # Inicializar cliente Binance
         try:
             if self.testnet:
                 self.client = Client(
@@ -47,6 +68,67 @@ class BinanceClientManager:
             logger.error(f"Falha ao inicializar cliente Binance (provavelmente erro de rede ou região): {e}")
             self.client = None
 
+    async def _cached_call(
+        self,
+        cache_key: str,
+        ttl: int,
+        fetch_fn: Callable,
+        *args,
+        **kwargs
+    ) -> Any:
+        """
+        Generic caching wrapper for API calls.
+        Checks Redis cache first, falls back to API call if miss.
+        """
+        if not self.cache_enabled or not self.redis:
+            return await fetch_fn(*args, **kwargs)
+        
+        try:
+            # Try cache first
+            cached = await self.redis.get(cache_key)
+            if cached:
+                logger.debug(f"✅ Cache HIT: {cache_key}")
+                return json.loads(cached)
+        except Exception as e:
+            logger.warning(f"Cache read error for {cache_key}: {e}")
+        
+        # Cache miss - fetch from API
+        logger.debug(f"❌ Cache MISS: {cache_key}")
+        result = await fetch_fn(*args, **kwargs)
+        
+        # Store in cache
+        if result is not None:
+            try:
+                await self.redis.setex(
+                    cache_key,
+                    ttl,
+                    json.dumps(result, default=str)
+                )
+                logger.debug(f"💾 Cached: {cache_key} (TTL={ttl}s)")
+            except Exception as e:
+                logger.warning(f"Cache write error for {cache_key}: {e}")
+        
+        return result
+    
+    async def invalidate_cache(self, pattern: str):
+        """
+        Invalidate cache keys matching pattern.
+        Example: invalidate_cache('binance:account:*')
+        """
+        if not self.cache_enabled or not self.redis:
+            return
+        
+        try:
+            keys = []
+            async for key in self.redis.scan_iter(match=pattern):
+                keys.append(key)
+            
+            if keys:
+                await self.redis.delete(*keys)
+                logger.info(f"🗑️ Invalidated {len(keys)} cache keys: {pattern}")
+        except Exception as e:
+            logger.warning(f"Cache invalidation error for {pattern}: {e}")
+    
     async def _retry_call(self, fn, *args, attempts: int = 3, base_sleep: float = 1.0, **kwargs):
         """
         Executa chamada do client em thread (não bloqueia o event loop) com retries exponenciais (1s, 2s, 4s).
@@ -59,6 +141,11 @@ class BinanceClientManager:
                 # Executar a função síncrona do python-binance em thread para não bloquear o loop
                 return await asyncio.to_thread(fn, *args, **kwargs)
             except BinanceAPIException as e:
+                # ✅ NOVO: Não tentar novamente se for erro fatal (Ban ou Config)
+                if e.code in (-1003, -4061):
+                    logger.error(f"❌ Erro FATAL da Binance ({e.code}): {e.message} - Abortando retries.")
+                    raise
+                
                 logger.warning(f"Retry Binance API ({attempt+1}/{attempts}) - {e}")
                 if attempt < attempts - 1:
                     await asyncio.sleep(base_sleep * (2 ** attempt))
@@ -72,40 +159,50 @@ class BinanceClientManager:
                     raise
 
     async def get_account_balance(self):
-        """Retorna saldo da conta de futuros com retries"""
-        try:
-            account = await self._retry_call(self.client.futures_account)
-            total_balance = float(account['totalWalletBalance'])
-            available_balance = float(account['availableBalance'])
+        """Retorna saldo da conta de futuros com retries e cache (10s TTL)"""
+        cache_key = "binance:account:balance"
+        
+        async def _fetch():
+            try:
+                account = await self._retry_call(self.client.futures_account)
+                total_balance = float(account['totalWalletBalance'])
+                available_balance = float(account['availableBalance'])
 
-            logger.info(f"Saldo Total: {total_balance} USDT")
-            logger.info(f"Saldo Disponível: {available_balance} USDT")
+                logger.debug(f"Saldo Total: {total_balance} USDT")
+                logger.debug(f"Saldo Disponivel: {available_balance} USDT")
 
-            return {
-                "total_balance": total_balance,
-                "available_balance": available_balance,
-                "positions": account.get('positions', [])
-            }
-        except BinanceAPIException as e:
-            logger.error(f"Erro ao obter saldo (após retries): {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Erro inesperado ao obter saldo: {e}")
-            return None
+                return {
+                    "total_balance": total_balance,
+                    "available_balance": available_balance,
+                    "positions": account.get('positions', [])
+                }
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter saldo (após retries): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter saldo: {e}")
+                return None
+        
+        return await self._cached_call(cache_key, ttl=10, fetch_fn=_fetch)
     
     async def get_symbol_price(self, symbol: str):
-        """Retorna preço atual de um símbolo com retries"""
-        try:
-            ticker = await self._retry_call(self.client.futures_symbol_ticker, symbol=symbol)
-            price = float(ticker['price'])
-            logger.info(f"Preço de {symbol}: {price}")
-            return price
-        except BinanceAPIException as e:
-            logger.error(f"Erro ao obter preço de {symbol} (após retries): {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Erro inesperado ao obter preço de {symbol}: {e}")
-            return None
+        """Retorna preço atual de um símbolo com retries e cache (2s TTL)"""
+        cache_key = f"binance:price:{symbol}"
+        
+        async def _fetch():
+            try:
+                ticker = await self._retry_call(self.client.futures_symbol_ticker, symbol=symbol)
+                price = float(ticker['price'])
+                logger.debug(f"Preco de {symbol}: {price}")
+                return price
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter preço de {symbol} (após retries): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter preço de {symbol}: {e}")
+                return None
+        
+        return await self._cached_call(cache_key, ttl=2, fetch_fn=_fetch)
     
     async def get_top_futures_symbols(self, limit: int = 100):
         """Retorna os top N símbolos de futuros por volume com retries"""
@@ -154,119 +251,130 @@ class BinanceClientManager:
             return []
     
     async def get_symbol_info(self, symbol: str) -> Optional[Dict]:
-        """Retorna informações de precisão e filtros do símbolo com retries"""
-        try:
-            exchange_info = await self._retry_call(self.client.futures_exchange_info)
+        """Retorna informações de precisão e filtros do símbolo com retries e cache (1h TTL)"""
+        cache_key = f"binance:symbol_info:{symbol}"
+        
+        async def _fetch():
+            try:
+                exchange_info = await self._retry_call(self.client.futures_exchange_info)
 
-            for s in exchange_info.get('symbols', []):
-                if s.get('symbol') == symbol:
-                    # Encontrar precisão de quantidade e preço
-                    quantity_precision = s.get('quantityPrecision')
-                    price_precision = s.get('pricePrecision')
+                for s in exchange_info.get('symbols', []):
+                    if s.get('symbol') == symbol:
+                        # Encontrar precisão de quantidade e preço
+                        quantity_precision = s.get('quantityPrecision')
+                        price_precision = s.get('pricePrecision')
 
-                    # Encontrar filtros LOT_SIZE e PRICE_FILTER
-                    lot_size_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'LOT_SIZE'), {})
-                    price_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'PRICE_FILTER'), {})
+                        # Encontrar filtros LOT_SIZE e PRICE_FILTER
+                        lot_size_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'LOT_SIZE'), {})
+                        price_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'PRICE_FILTER'), {})
 
-                    min_qty = float(lot_size_filter.get('minQty', 0) or 0)
-                    max_qty = float(lot_size_filter.get('maxQty', 999999) or 999999)
-                    step_size = float(lot_size_filter.get('stepSize', 0) or 0)
+                        min_qty = float(lot_size_filter.get('minQty', 0) or 0)
+                        max_qty = float(lot_size_filter.get('maxQty', 999999) or 999999)
+                        step_size = float(lot_size_filter.get('stepSize', 0) or 0)
 
-                    min_price = float(price_filter.get('minPrice', 0) or 0)
-                    tick_size = float(price_filter.get('tickSize', 0) or 0)
-                    min_notional_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'MIN_NOTIONAL'), {})
-                    min_notional = float(min_notional_filter.get('notional', 0) or 0)
+                        min_price = float(price_filter.get('minPrice', 0) or 0)
+                        tick_size = float(price_filter.get('tickSize', 0) or 0)
+                        min_notional_filter = next((f for f in s.get('filters', []) if f.get('filterType') == 'MIN_NOTIONAL'), {})
+                        min_notional = float(min_notional_filter.get('notional', 0) or 0)
 
-                    logger.info(f"Info de {symbol}: qty_precision={quantity_precision}, step_size={step_size}")
+                        logger.info(f"Info de {symbol}: qty_precision={quantity_precision}, step_size={step_size}")
 
-                    return {
-                        'symbol': symbol,
-                        'quantity_precision': quantity_precision,
-                        'price_precision': price_precision,
-                        'min_quantity': min_qty,
-                        'max_quantity': max_qty,
-                        'step_size': step_size,
-                        'min_price': min_price,
-                        'tick_size': tick_size,
-                        'min_notional': min_notional
-                    }
+                        return {
+                            'symbol': symbol,
+                            'quantity_precision': quantity_precision,
+                            'price_precision': price_precision,
+                            'min_quantity': min_qty,
+                            'max_quantity': max_qty,
+                            'step_size': step_size,
+                            'min_price': min_price,
+                            'tick_size': tick_size,
+                            'min_notional': min_notional
+                        }
 
-            logger.error(f"Símbolo {symbol} não encontrado")
-            return None
+                logger.error(f"Símbolo {symbol} não encontrado")
+                return None
 
-        except BinanceAPIException as e:
-            logger.error(f"Erro ao obter info do símbolo {symbol} (após retries): {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Erro inesperado ao obter info do símbolo {symbol}: {e}")
-            return None
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter info do símbolo {symbol} (após retries): {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter info do símbolo {symbol}: {e}")
+                return None
+        
+        return await self._cached_call(cache_key, ttl=3600, fetch_fn=_fetch)
 
     async def get_positions_margin_modes(self) -> List[Dict]:
         """
         Retorna posições vivas com indicação do modo de margem (CROSSED/ISOLATED) por símbolo.
         Usa futures_account (já empregado no projeto) e deduz pelo campo 'isolated' ou 'marginType'.
+        Cache de 5s para reduzir chamadas frequentes.
         """
-        try:
-            account = await self._retry_call(self.client.futures_account)
-            positions = account.get("positions", []) or []
-            items: List[Dict] = []
+        cache_key = "binance:positions:margin_modes"
+        
+        async def _fetch():
+            try:
+                account = await self._retry_call(self.client.futures_account)
+                positions = account.get("positions", []) or []
+                items: List[Dict] = []
 
-            for p in positions:
-                sym = p.get("symbol")
-                if not sym:
-                    continue
+                for p in positions:
+                    sym = p.get("symbol")
+                    if not sym:
+                        continue
 
-                # Quantidade líquida (posição viva se != 0)
-                try:
-                    amt = float(p.get("positionAmt", 0) or 0)
-                except Exception:
-                    amt = 0.0
-
-                # Deduz modo de margem
-                iso_flag = None
-                if "isolated" in p:
+                    # Quantidade líquida (posição viva se != 0)
                     try:
-                        iso_flag = bool(p.get("isolated"))
+                        amt = float(p.get("positionAmt", 0) or 0)
                     except Exception:
-                        iso_flag = None
-                if iso_flag is None:
-                    iso_flag = str(p.get("marginType", "cross")).lower() == "isolated"
+                        amt = 0.0
 
-                margin_mode = "ISOLATED" if iso_flag else "CROSSED"
+                    # Deduz modo de margem
+                    iso_flag = None
+                    if "isolated" in p:
+                        try:
+                            iso_flag = bool(p.get("isolated"))
+                        except Exception:
+                            iso_flag = None
+                    if iso_flag is None:
+                        iso_flag = str(p.get("marginType", "cross")).lower() == "isolated"
 
-                # Campos auxiliares úteis para diagnóstico
-                try:
-                    lev = float(p.get("leverage", 0) or 0)
-                except Exception:
-                    lev = 0.0
-                try:
-                    entry_price = float(p.get("entryPrice", 0) or 0)
-                except Exception:
-                    entry_price = 0.0
-                try:
-                    iso_wallet = float(p.get("isolatedWallet", 0) or 0)
-                except Exception:
-                    iso_wallet = 0.0
+                    margin_mode = "ISOLATED" if iso_flag else "CROSSED"
 
-                items.append({
-                    "symbol": sym,
-                    "positionAmt": amt,
-                    "isolated": bool(iso_flag),
-                    "margin_mode": margin_mode,
-                    "leverage": lev,
-                    "entryPrice": entry_price,
-                    "isolatedWallet": iso_wallet,
-                })
+                    # Campos auxiliares úteis para diagnóstico
+                    try:
+                        lev = float(p.get("leverage", 0) or 0)
+                    except Exception:
+                        lev = 0.0
+                    try:
+                        entry_price = float(p.get("entryPrice", 0) or 0)
+                    except Exception:
+                        entry_price = 0.0
+                    try:
+                        iso_wallet = float(p.get("isolatedWallet", 0) or 0)
+                    except Exception:
+                        iso_wallet = 0.0
 
-            # Apenas posições vivas (amt != 0)
-            live = [x for x in items if abs(float(x.get("positionAmt", 0) or 0)) > 0]
-            return live
-        except BinanceAPIException as e:
-            logger.error(f"Erro ao obter margin modes (após retries): {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Erro inesperado ao obter margin modes: {e}")
-            return []
+                    items.append({
+                        "symbol": sym,
+                        "positionAmt": amt,
+                        "isolated": bool(iso_flag),
+                        "margin_mode": margin_mode,
+                        "leverage": lev,
+                        "entryPrice": entry_price,
+                        "isolatedWallet": iso_wallet,
+                    })
+
+                # Apenas posições vivas (amt != 0)
+                live = [x for x in items if abs(float(x.get("positionAmt", 0) or 0)) > 0]
+                return live
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter margin modes (após retries): {e}")
+                return []
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter margin modes: {e}")
+                return []
+        
+        return await self._cached_call(cache_key, ttl=5, fetch_fn=_fetch)
 
     async def ensure_margin_type(self, symbol: str, isolated: bool) -> bool:
         """
@@ -295,6 +403,64 @@ class BinanceClientManager:
         except Exception as e:
             logger.warning(f"Não foi possível garantir margin type {desired} para {symbol}: {e}")
             raise
+
+    async def ensure_position_mode(self, dual_side: bool = False) -> bool:
+        """
+        Garante o 'Position Mode':
+        - True  -> Hedge Mode (Dual Side Position)
+        - False -> One-Way Mode
+        Retorna True se alterado/ok, False se já estava no modo desejado.
+        """
+        desired = "HEDGE MODE" if dual_side else "ONE-WAY MODE"
+        try:
+            # Tenta setar diretamente (idempotente: ignora erros de 'no need to change')
+            def _change():
+                return self.client.futures_change_position_mode(dualSidePosition=dual_side)
+
+            try:
+                await self._retry_call(_change)
+                logger.info(f"✅ Position Mode alterado para {desired}")
+                self._dual_side_mode = dual_side
+                return True
+            except BinanceAPIException as e:
+                msg = str(getattr(e, "message", "")) or str(e)
+                code = getattr(e, "code", None)
+                # Já está no modo desejado (-4059: No need to change position side)
+                if code == -4059 or "No need to change" in msg or "no need to change" in msg:
+                    logger.info(f"Position Mode já era {desired}")
+                    self._dual_side_mode = dual_side
+                    return False
+                if code == -4068 or "Position side cannot be changed" in msg:
+                    current = await self.get_position_mode(force_refresh=True)
+                    current_txt = "HEDGE MODE" if current else "ONE-WAY MODE"
+                    logger.warning(f"Position Mode unchanged due to open positions. Current: {current_txt}")
+                    return False
+                raise
+        except Exception as e:
+            logger.warning(f"Não foi possível garantir {desired}: {e}")
+            raise
+
+    async def get_position_mode(self, force_refresh: bool = False) -> Optional[bool]:
+        """
+        Retorna o modo atual de posição:
+        - True  -> Hedge Mode
+        - False -> One-Way Mode
+        """
+        if self._dual_side_mode is not None and not force_refresh:
+            return self._dual_side_mode
+        try:
+            data = await self._retry_call(self.client.futures_get_position_mode)
+            self._dual_side_mode = bool(data.get("dualSidePosition"))
+            return self._dual_side_mode
+        except Exception as e:
+            logger.warning(f"Falha ao obter Position Mode: {e}")
+            return self._dual_side_mode
+
+    async def get_position_side(self, direction: str) -> Optional[str]:
+        mode = await self.get_position_mode()
+        if mode is True:
+            return "LONG" if str(direction).upper() == "LONG" else "SHORT"
+        return None
 
     async def get_leverage_brackets(self, symbol: Optional[str] = None):
         """
@@ -444,7 +610,7 @@ class BinanceClientManager:
         if self.testnet:
             return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
         try:
-            rows = await self._retry_call(self.client.futures_taker_longshort_ratio, symbol=symbol, period=period, limit=limit, attempts=2, base_sleep=0.5)
+            rows = await self._retry_call(self.client.futures_taker_long_short_ratio, symbol=symbol, period=period, limit=limit, attempts=2, base_sleep=0.5)
             if not rows:
                 return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
             last = rows[-1]
@@ -540,8 +706,85 @@ class BinanceClientManager:
                 logger.info("User WS loop cancelado")
                 break
             except Exception as e:
-                logger.warning(f"User WS desconectado: {e} — tentando reconectar em 5s")
+                logger.warning(f"User WS disconnected: {e} - reconnecting in 5s")
                 await asyncio.sleep(5)
+
+    async def _market_ws_loop(self):
+        """
+        Loop do WebSocket de Market Data (!miniTicker@arr).
+        Atualiza o cache Redis com os preços em tempo real.
+        """
+        base = "wss://stream.binancefuture.com/ws" if self.testnet else "wss://fstream.binance.com/ws"
+        url = f"{base}/!miniTicker@arr"
+        
+        logger.info(f"Connecting Market WS: {url}")
+        
+        while self._market_stream_running:
+            try:
+                if not self.redis:
+                    logger.warning("Redis não disponível para Market WS - aguardando...")
+                    await asyncio.sleep(10)
+                    continue
+
+                async with websockets.connect(url) as ws:
+                    logger.info("✅ Market WS conectado (!miniTicker@arr)")
+                    
+                    async for raw in ws:
+                        if not self._market_stream_running: 
+                            break
+                        
+                        try:
+                            data = json.loads(raw)
+                            # !miniTicker@arr retorna lista de dicts
+                            # [{"e":"24hrMiniTicker","E":123456789,"s":"BTCUSDT","c":"50000.00",...}, ...]
+                            if isinstance(data, list):
+                                pipeline = self.redis.pipeline()
+                                count = 0
+                                for item in data:
+                                    symbol = item.get("s")
+                                    price_str = item.get("c") # Close price
+                                    if symbol and price_str:
+                                        # Manter compatibilidade com cache key do get_symbol_price
+                                        # Armazena apenas o float JSON dumpado
+                                        pipeline.setex(
+                                            f"binance:price:{symbol}",
+                                            10, # 10s TTL (stream é rápido, mas margem segura)
+                                            price_str # JSON de float é apenas a string do numero
+                                        )
+                                        count += 1
+                                
+                                if count > 0:
+                                    await pipeline.execute()
+                                    
+                        except Exception as e:
+                            logger.debug(f"Market WS parse error: {e}")
+                            
+            except Exception as e:
+                logger.warning(f"Market WS desconectado: {e} - reconectando em 5s...")
+                await asyncio.sleep(5)
+
+    async def start_market_stream(self):
+        """Inicia o stream de dados de mercado (preços)."""
+        if self._market_stream_running:
+            return
+            
+        self._market_stream_running = True
+        logger.info("🚀 Iniciando Market Data Stream...")
+        
+        if self._market_ws_task is None or self._market_ws_task.done():
+            self._market_ws_task = asyncio.create_task(self._market_ws_loop())
+
+    async def stop_market_stream(self):
+        """Para o stream de mercado."""
+        self._market_stream_running = False
+        if self._market_ws_task and not self._market_ws_task.done():
+            self._market_ws_task.cancel()
+            try:
+                await self._market_ws_task
+            except Exception:
+                pass
+        self._market_ws_task = None
+        logger.info("🛑 Market Data Stream parado")
 
     async def start_user_stream(self) -> Dict:
         """

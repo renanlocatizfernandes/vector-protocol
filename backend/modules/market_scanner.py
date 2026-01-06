@@ -87,13 +87,18 @@ class MarketScanner:
             if min_liq > 0.0:
                 ranked = [sym for sym in ranked if volume_dict.get(sym, 0.0) >= min_liq]
 
+        # Whitelist global (prod/testnet)
+        wl = [str(x).upper() for x in (getattr(s, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
+        if wl and getattr(s, "SCANNER_STRICT_WHITELIST", False):
+            ranked = [x for x in ranked if x in wl] or wl
+
         # Em testnet com whitelist estrita, reduz ao conjunto especificado
         if getattr(s, "BINANCE_TESTNET", True) and getattr(s, "SCANNER_TESTNET_STRICT_WHITELIST", True):
-            wl = list(getattr(s, "TESTNET_WHITELIST", [])) or [
+            wl_testnet = list(getattr(s, "TESTNET_WHITELIST", [])) or [
                 'BTCUSDT','ETHUSDT','BNBUSDT','XRPUSDT','ADAUSDT',
                 'DOGEUSDT','SOLUSDT','LTCUSDT','DOTUSDT','LINKUSDT','TRXUSDT','BCHUSDT'
             ]
-            ranked = [x for x in ranked if x in wl] or wl
+            ranked = [x for x in ranked if x in wl_testnet] or wl_testnet
 
         return ranked
 
@@ -325,7 +330,10 @@ class MarketScanner:
             
             # Retornar apenas símbolos
             result = [c["symbol"] for c in candidates[:limit]]
-            logger.info(f"🎯 Sniper Candidates ({len(result)}): {result[:5]}...")
+            wl = [str(x).upper() for x in (getattr(self.settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
+            if wl and getattr(self.settings, "SCANNER_STRICT_WHITELIST", False):
+                result = [s for s in result if s in wl] or wl
+            logger.info(f"Sniper Candidates ({len(result)}): {result[:5]}...")
             return result
             
         except Exception as e:

@@ -2,17 +2,22 @@ import axios from "axios";
 
 // Base URL: usa VITE_API_BASE se fornecido, senão proxy do Vite (dev). Com fallback automático.
 const RAW_BASE = (import.meta.env as any).VITE_API_BASE;
+const RAW_KEY = (import.meta.env as any).VITE_API_KEY;
+const RAW_KEY_HEADER = (import.meta.env as any).VITE_API_KEY_HEADER;
 const USE_ENV_BASE =
   !!RAW_BASE &&
   String(RAW_BASE).trim() !== "" &&
   String(RAW_BASE).trim() !== "undefined" &&
   String(RAW_BASE).trim() !== "null";
 const API_BASE = USE_ENV_BASE ? String(RAW_BASE).trim() : "";
+const API_KEY = RAW_KEY ? String(RAW_KEY).trim() : "";
+const API_KEY_HEADER = RAW_KEY_HEADER ? String(RAW_KEY_HEADER).trim() : "X-API-Key";
 
 // Axios instance com timeout menor e fallback para same-origin quando VITE_API_BASE falhar
 export const http = axios.create({
   baseURL: API_BASE,
-  timeout: 5000
+  timeout: 5000,
+  headers: API_KEY ? { [API_KEY_HEADER]: API_KEY } : undefined
 });
 
 // Fallback automático: se baseURL via VITE_API_BASE falhar por timeout ou Network Error, tenta same-origin (proxy) uma única vez
@@ -53,6 +58,7 @@ export type BotStatus = {
   min_score?: number;
   max_positions?: number;
   circuit_breaker_active?: boolean;
+  symbols?: string[];
 };
 
 export type DailyStats = {
@@ -100,6 +106,7 @@ export type ConfigResponse = {
   max_portfolio_risk: number;
   default_leverage: number;
   testnet: boolean;
+  symbol_whitelist?: string[];
 };
 
 // Helpers
@@ -137,6 +144,7 @@ export async function updateBotConfig(params: {
   scan_interval_minutes?: number;
   min_score?: number;
   max_positions?: number;
+  symbols?: string;
 }): Promise<any> {
   // Backend espera query params, não body
   const res = await http.put("/api/trading/bot/config", null, { params });

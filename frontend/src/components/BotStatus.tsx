@@ -95,36 +95,47 @@ export const BotStatus: React.FC = () => {
     const isRunning = !!bot?.running;
 
     return (
-        <Card className="h-full relative overflow-hidden">
-            {/* Neon Glow Background */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+        <Card className="h-full relative overflow-hidden glass-card border-white/10 shadow-2xl hover:shadow-primary/5 transition-all duration-300">
+            {/* Enhanced Neon Glow Background */}
+            <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-primary/20 to-accent/10 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDuration: '3s' }} />
+            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
 
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 relative">
+                {/* Gradient accent line */}
+                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-primary" /> System Status
+                    <Cpu className="w-4 h-4 text-primary drop-shadow-[0_0_6px_rgba(42,212,198,0.4)]" />
+                    <span className="bg-gradient-to-r from-white to-primary/80 bg-clip-text text-transparent font-semibold">System Status</span>
                 </CardTitle>
                 <div className={cn(
-                    "px-2 py-1 rounded-md text-xs font-bold border flex items-center gap-2",
+                    "px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-lg transition-all duration-300",
                     isRunning
-                        ? "bg-green-500/10 text-green-500 border-green-500/20"
-                        : "bg-red-500/10 text-red-500 border-red-500/20"
+                        ? "bg-success/10 text-success border-success/30 shadow-success/20"
+                        : "bg-danger/10 text-danger border-danger/30 shadow-danger/15"
                 )}>
-                    <div className={cn("w-2 h-2 rounded-full", isRunning ? "bg-green-500 animate-pulse" : "bg-red-500")} />
+                    <div className={cn(
+                        "w-2 h-2 rounded-full shadow-lg",
+                        isRunning ? "bg-success animate-pulse shadow-success/50" : "bg-danger shadow-danger/50"
+                    )} />
                     {isRunning ? 'ONLINE' : 'OFFLINE'}
                 </div>
             </CardHeader>
 
             <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700/50 flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground uppercase">Daily P&L</span>
-                        <span className={cn("text-xl font-bold", daily && daily.total_pnl >= 0 ? "text-success" : "text-danger")}>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Daily P&L</span>
+                        <span className={cn(
+                            "text-2xl font-bold",
+                            daily && daily.total_pnl >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                        )}>
                             ${daily ? daily.total_pnl.toFixed(2) : '0.00'}
                         </span>
                     </div>
-                    <div className="p-3 rounded-lg bg-dark-800/50 border border-dark-700/50 flex flex-col gap-1">
-                        <span className="text-xs text-muted-foreground uppercase">Win Rate</span>
-                        <span className="text-xl font-bold text-primary">
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-accent/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate</span>
+                        <span className="text-2xl font-bold text-primary drop-shadow-[0_0_8px_rgba(42,212,198,0.3)]">
                             {daily ? daily.win_rate.toFixed(1) : '0.0'}%
                         </span>
                     </div>
@@ -133,15 +144,29 @@ export const BotStatus: React.FC = () => {
                 <div className="flex gap-3">
                     {!isRunning ? (
                         <>
-                            <Button className="flex-1" onClick={() => handleStart(false)} disabled={loading}>
+                            <Button
+                                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary-light hover:to-accent-light shadow-lg shadow-primary/15 hover:shadow-primary/25 transition-all duration-300"
+                                onClick={() => handleStart(false)}
+                                disabled={loading}
+                            >
                                 <Play className="mr-2 h-4 w-4" /> Start Live
                             </Button>
-                            <Button variant="outline" className="flex-1" onClick={() => handleStart(true)} disabled={loading}>
+                            <Button
+                                variant="outline"
+                                className="flex-1 border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all duration-300"
+                                onClick={() => handleStart(true)}
+                                disabled={loading}
+                            >
                                 <Play className="mr-2 h-4 w-4" /> Dry Run
                             </Button>
                         </>
                     ) : (
-                        <Button variant="destructive" className="flex-1 w-full" onClick={handleStop} disabled={loading}>
+                        <Button
+                            variant="destructive"
+                            className="flex-1 w-full shadow-lg shadow-danger/15 hover:shadow-danger/25 transition-all duration-300"
+                            onClick={handleStop}
+                            disabled={loading}
+                        >
                             <Square className="mr-2 h-4 w-4 fill-current" /> Stop Engine
                         </Button>
                     )}
@@ -159,13 +184,13 @@ export const BotStatus: React.FC = () => {
                     </Button>
 
                     {showConfig && (
-                        <div className="mt-4 space-y-4 p-4 rounded-lg bg-dark-950/50 border border-dark-700/50 animate-in slide-in-from-top-2">
+                        <div className="mt-4 space-y-4 p-4 rounded-lg bg-white/5 border border-white/10 animate-in slide-in-from-top-2">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
                                     <label className="text-xs font-medium text-muted-foreground">Scan (min)</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-dark-900 border-dark-700"
+                                        className="h-8 bg-white/5 border-white/10"
                                         value={scanInterval}
                                         onChange={e => setScanInterval(e.target.value)}
                                     />
@@ -174,7 +199,7 @@ export const BotStatus: React.FC = () => {
                                     <label className="text-xs font-medium text-muted-foreground">Min Score</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-dark-900 border-dark-700"
+                                        className="h-8 bg-white/5 border-white/10"
                                         value={minScore}
                                         onChange={e => setMinScore(e.target.value)}
                                     />
@@ -183,7 +208,7 @@ export const BotStatus: React.FC = () => {
                                     <label className="text-xs font-medium text-muted-foreground">Max Positions</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-dark-900 border-dark-700"
+                                        className="h-8 bg-white/5 border-white/10"
                                         value={maxPositions}
                                         onChange={e => setMaxPositions(e.target.value)}
                                     />

@@ -29,6 +29,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 Access Frontend: http://localhost:3000
+API default: http://localhost:8000 (configure `API_PORT_HOST` to change)
 
 ### Local Development
 See [docs/RUNBOOK.md](docs/RUNBOOK.md) for detailed local setup instructions.
@@ -36,3 +37,4 @@ See [docs/RUNBOOK.md](docs/RUNBOOK.md) for detailed local setup instructions.
 ## 🔒 Security
 - Never commit `.env` or API keys.
 - Check `docs/GOVERNANCE.md` for security protocols.
+- Optional API key auth is available via `API_AUTH_ENABLED` and `API_KEY`.

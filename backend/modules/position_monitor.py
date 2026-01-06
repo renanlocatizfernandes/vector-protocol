@@ -69,8 +69,12 @@ class PositionMonitor:
             "total_positions_monitored": 0,
             "positions_closed": 0,
             "events": {
+                "breakeven_stop": 0,  # ✅ PROFIT OPTIMIZATION - Breakeven protection
+                "funding_exit": 0,    # ✅ PROFIT OPTIMIZATION - Funding-aware exit
                 "trailing_stop": 0,
                 "partial_tp": 0,
+                "dca_buy": 0,
+                "time_exit": 0,
                 "emergency_stop": 0,
                 "max_loss": 0,
                 "take_profit": 0,
@@ -93,6 +97,7 @@ class PositionMonitor:
         logger.info(f"🛑 Max Loss por Trade: {self.max_loss_per_trade}%")
         logger.info(f"🚨 Emergency Stop: {self.emergency_stop_loss}%")
         logger.info(f"⚡ Circuit Breaker: {self.max_consecutive_losses} perdas consecutivas")
+        logger.info(f"🛡️ Breakeven Stop: ATIVADO - Protege lucros em +{getattr(self.settings, 'BREAKEVEN_ACTIVATION_PCT', 2.0)}%")
         logger.info(f"📈 Trailing Stop: Ativa após +{self.trailing_stop_activation}%")
         logger.info(f"💰 Take Profit Parcial: +{self.partial_tp_threshold}%")
         logger.info(f"🔴 Kill Switch: {self.max_drawdown_pct}% drawdown")
@@ -202,10 +207,41 @@ class PositionMonitor:
                             
                             # ✅ NOVO v4.0: Tracking de MAE/MFE
                             self._update_mae_mfe(trade.symbol, current_price, effective_entry, trade.direction)
-                            
+
                             trade.current_price = current_price
                             trade.pnl = unrealized_pnl
                             trade.pnl_percentage = pnl_percentage
+
+                            # ✅ PROFIT OPTIMIZATION - Net P&L Tracking (includes all fees)
+                            if getattr(self.settings, "TRACK_FEES_PER_TRADE", True):
+                                try:
+                                    from modules.profit_optimizer import profit_optimizer
+
+                                    # Calculate net P&L including fees
+                                    net_pnl_data = await profit_optimizer.calculate_net_pnl(
+                                        trade,
+                                        current_price,
+                                        entry_was_maker=getattr(trade, 'is_maker_entry', False),
+                                        exit_is_maker=False  # Assume taker for exit estimate
+                                    )
+
+                                    trade.entry_fee = net_pnl_data.get('entry_fee', 0.0)
+                                    trade.exit_fee = net_pnl_data.get('exit_fee', 0.0)
+                                    trade.funding_cost = net_pnl_data.get('funding_cost', 0.0)
+                                    trade.net_pnl = net_pnl_data.get('net_pnl', 0.0)
+
+                                    # Log if fee impact is significant
+                                    fee_impact = net_pnl_data.get('fee_impact_pct', 0.0)
+                                    if fee_impact > 5:
+                                        logger.warning(
+                                            f"⚠️ {trade.symbol}: High fee impact {fee_impact:.1f}% "
+                                            f"(Gross: ${unrealized_pnl:.2f}, Net: ${trade.net_pnl:.2f})"
+                                        )
+
+                                except Exception as e:
+                                    logger.debug(f"Error calculating net P&L for {trade.symbol}: {e}")
+                                    # Fallback: use gross P&L
+                                    trade.net_pnl = unrealized_pnl
                             
                             # Log otimizado (apenas mudanças significativas)
                             if abs(pnl_percentage) > 1.0 or unrealized_pnl != 0:
@@ -215,10 +251,22 @@ class PositionMonitor:
                                     f"P&L {unrealized_pnl:+.2f} USDT ({pnl_percentage:+.2f}%)"
                                 )
                             
+                            # ✅ PROFIT OPTIMIZATION - Breakeven Stop (HIGHEST PRIORITY)
+                            if getattr(self.settings, "ENABLE_BREAKEVEN_STOP", True):
+                                if await self._check_breakeven_stop(trade, current_price, db):
+                                    self._track_event("breakeven_stop", trade.symbol, pnl_percentage, current_price)
+                                    continue
+
+                            # ✅ PROFIT OPTIMIZATION - Funding-Aware Exit (HIGH PRIORITY)
+                            if getattr(self.settings, "ENABLE_FUNDING_EXITS", True):
+                                if await self._check_funding_exit(trade, pnl_percentage, current_price, db):
+                                    self._track_event("funding_exit", trade.symbol, pnl_percentage, current_price)
+                                    continue
+
                             # ✅ Trailing Stop e TP Parcial (se campos existirem)
                             has_trailing_fields = hasattr(trade, 'max_pnl_percentage')
                             has_partial_field = hasattr(trade, 'partial_taken')
-                            
+
                             if has_trailing_fields:
                                 if await self._check_trailing_stop(trade, current_price, db):
                                     self._track_event("trailing_stop", trade.symbol, pnl_percentage, current_price)
@@ -252,12 +300,13 @@ class PositionMonitor:
                                     pass
                                 
                                 self._track_event("emergency_stop", trade.symbol, pnl_percentage, current_price)
-                                await self._close_position(
-                                    trade,
-                                    current_price,
-                                    reason=f"Emergency Stop ({pnl_percentage:.2f}%)",
-                                    db=db
-                                )
+                                if not self._skip_action_if_not_whitelisted(trade.symbol, "emergency_stop"):
+                                    await self._close_position(
+                                        trade,
+                                        current_price,
+                                        reason=f"Emergency Stop ({pnl_percentage:.2f}%)",
+                                        db=db
+                                    )
                                 continue
                             
                             # Max loss por trade (-8%)
@@ -273,12 +322,13 @@ class PositionMonitor:
                                     pass
                                 
                                 self._track_event("max_loss", trade.symbol, pnl_percentage, current_price)
-                                await self._close_position(
-                                    trade,
-                                    current_price,
-                                    reason=f"Max Loss ({pnl_percentage:.2f}%)",
-                                    db=db
-                                )
+                                if not self._skip_action_if_not_whitelisted(trade.symbol, "max_loss"):
+                                    await self._close_position(
+                                        trade,
+                                        current_price,
+                                        reason=f"Max Loss ({pnl_percentage:.2f}%)",
+                                        db=db
+                                    )
                                 
                                 # Adicionar ao blacklist
                                 await self._add_to_symbol_blacklist(trade.symbol)
@@ -339,11 +389,190 @@ class PositionMonitor:
                 return True
             
             return False
-            
+
         except Exception as e:
             logger.error(f"Erro ao verificar kill switch: {e}")
             return False
-    
+
+    async def _check_breakeven_stop(
+        self,
+        trade: Trade,
+        current_price: float,
+        db: SessionLocal
+    ) -> bool:
+        """
+        ✅ PROFIT OPTIMIZATION v6.0: Breakeven Stop Protection
+
+        CRITICAL: Prevents winners from turning into losers!
+
+        Activation: When P&L reaches BREAKEVEN_ACTIVATION_PCT (default +2%)
+        Stop Level: True breakeven (entry + all fees)
+
+        This protects winning trades by locking in breakeven as the worst-case exit,
+        ensuring that positions that reached +2% profit never become losses.
+        """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "breakeven_stop"):
+            return False
+
+        pnl_percentage = trade.pnl_percentage
+
+        # Initialize breakeven fields if not present
+        if not hasattr(trade, 'breakeven_price'):
+            trade.breakeven_price = None
+        if not hasattr(trade, 'breakeven_stop_activated'):
+            trade.breakeven_stop_activated = False
+
+        breakeven_threshold = getattr(self.settings, 'BREAKEVEN_ACTIVATION_PCT', 2.0)
+
+        # Check if breakeven stop should be ACTIVATED
+        if not trade.breakeven_stop_activated and pnl_percentage >= breakeven_threshold:
+            try:
+                from modules.profit_optimizer import profit_optimizer
+
+                # Calculate true breakeven including all fees
+                breakeven_price = await profit_optimizer.calculate_breakeven_price(trade)
+
+                trade.breakeven_price = breakeven_price
+                trade.breakeven_stop_activated = True
+                db.commit()
+
+                logger.info(
+                    f"✅ BREAKEVEN ACTIVATED: {trade.symbol}\n"
+                    f"  Entry: {trade.entry_price:.4f}\n"
+                    f"  True Breakeven: {breakeven_price:.4f} (includes all fees)\n"
+                    f"  Current P&L: +{pnl_percentage:.2f}%\n"
+                    f"  🛡️  Position protected - minimum loss protection enabled"
+                )
+
+                try:
+                    await telegram_notifier.notify_breakeven_activated(
+                        trade.symbol,
+                        trade.entry_price,
+                        breakeven_price,
+                        pnl_percentage
+                    )
+                except:
+                    pass
+
+            except Exception as e:
+                logger.error(f"Error calculating breakeven for {trade.symbol}: {e}")
+                return False
+
+        # Check if breakeven stop is TRIGGERED
+        if trade.breakeven_stop_activated and trade.breakeven_price:
+            should_exit = False
+
+            if trade.direction == 'LONG' and current_price <= trade.breakeven_price:
+                should_exit = True
+                reason = f"Breakeven Stop (LONG) - Price {current_price:.4f} <= Breakeven {trade.breakeven_price:.4f}"
+
+            elif trade.direction == 'SHORT' and current_price >= trade.breakeven_price:
+                should_exit = True
+                reason = f"Breakeven Stop (SHORT) - Price {current_price:.4f} >= Breakeven {trade.breakeven_price:.4f}"
+
+            if should_exit:
+                logger.warning(
+                    f"🛡️ BREAKEVEN STOP EXECUTED: {trade.symbol}\n"
+                    f"  Entry: {trade.entry_price:.4f}\n"
+                    f"  Breakeven: {trade.breakeven_price:.4f}\n"
+                    f"  Current: {current_price:.4f}\n"
+                    f"  Final P&L: {pnl_percentage:+.2f}%\n"
+                    f"  Status: Protected from turning into a loss"
+                )
+
+                try:
+                    await telegram_notifier.notify_breakeven_hit(
+                        trade.symbol,
+                        trade.entry_price,
+                        trade.breakeven_price,
+                        current_price,
+                        pnl_percentage
+                    )
+                except:
+                    pass
+
+                await self._close_position(
+                    trade,
+                    current_price,
+                    reason=reason,
+                    db=db
+                )
+
+                return True
+
+        return False
+
+    async def _check_funding_exit(
+        self,
+        trade: Trade,
+        current_pnl_pct: float,
+        current_price: float,
+        db: SessionLocal
+    ) -> bool:
+        """
+        ✅ PROFIT OPTIMIZATION v6.0: Funding-Aware Exit
+
+        Exit before expensive funding payment if:
+        1. Time to next funding < 30 min (configurable)
+        2. Current funding rate adverse:
+           - LONG: funding > 0.08% (configurable)
+           - SHORT: funding < -0.08% (configurable)
+        3. Current P&L > 0.5% minimum profit (configurable)
+
+        WHY: Paying 0.1% funding on +1% profit = 10% of profit gone!
+        Better to exit with +0.9% (0.1% profit - 0 funding) than +1% (0.1% profit - 0.1% funding)
+        """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "funding_exit"):
+            return False
+
+        try:
+            from modules.profit_optimizer import profit_optimizer
+
+            # Check if funding exit is profitable
+            should_exit, reason = await profit_optimizer.should_exit_for_funding(
+                trade,
+                current_pnl_pct
+            )
+
+            if should_exit:
+                logger.warning(
+                    f"💰 FUNDING EXIT TRIGGERED: {trade.symbol}\n"
+                    f"  Entry: {trade.entry_price:.4f}\n"
+                    f"  Current: {current_price:.4f}\n"
+                    f"  P&L: {current_pnl_pct:+.2f}%\n"
+                    f"  Reason: {reason}\n"
+                    f"  ✅ Saving profit from funding payment"
+                )
+
+                try:
+                    await telegram_notifier.send_message(
+                        f"💰 <b>FUNDING EXIT</b>\n\n"
+                        f"📊 Symbol: {trade.symbol}\n"
+                        f"📈 Direction: {trade.direction}\n"
+                        f"💵 Entry: {trade.entry_price:.6f}\n"
+                        f"💵 Exit: {current_price:.6f}\n"
+                        f"📊 P&L: {current_pnl_pct:+.2f}%\n"
+                        f"📌 Reason: Funding payment avoided\n"
+                    )
+                except:
+                    pass
+
+                await self._close_position(
+                    trade,
+                    current_price,
+                    reason="Funding Exit (profit protection)",
+                    db=db
+                )
+
+                return True
+
+        except Exception as e:
+            logger.debug(f"Error checking funding exit for {trade.symbol}: {e}")
+
+        return False
+
     async def _sync_missing_positions(
         self,
         binance_positions: List[Dict],
@@ -423,6 +652,9 @@ class PositionMonitor:
         """
         ✅ NOVO v4.0: Trailing Stop adaptativo por ATR (respeitando TSL_* min/max)
         """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "trailing_stop"):
+            return False
         
         pnl_percentage = trade.pnl_percentage
         
@@ -509,6 +741,9 @@ class PositionMonitor:
         """
         ✅ NOVO: Take Profit Parcial DINÂMICO (baseado em volatilidade)
         """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "partial_tp"):
+            return False
         
         if trade.partial_taken:
             return False
@@ -550,14 +785,24 @@ class PositionMonitor:
                 partial_qty = round_step_size(partial_qty, symbol_info['step_size'])
                 
                 side = 'SELL' if trade.direction == 'LONG' else 'BUY'
-                
+                position_side = None
+                try:
+                    position_side = await binance_client.get_position_side(trade.direction)
+                except Exception as e:
+                    logger.debug(f"Position side lookup failed: {e}")
+
+                order_params = {
+                    "symbol": trade.symbol,
+                    "side": side,
+                    "type": "MARKET",
+                    "quantity": partial_qty,
+                    "reduceOnly": True
+                }
+                if position_side:
+                    order_params["positionSide"] = position_side
                 order = await asyncio.to_thread(
                     self.client.futures_create_order,
-                    symbol=trade.symbol,
-                    side=side,
-                    type='MARKET',
-                    quantity=partial_qty,
-                    reduceOnly=True
+                    **order_params
                 )
                 
                 # Atualizar trade
@@ -599,6 +844,9 @@ class PositionMonitor:
         ✅ NOVO v5.0: Smart DCA (Dollar Cost Averaging)
         Compra mais se o trade for contra (-2.5%) mas a tendência ainda for válida.
         """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "dca"):
+            return False
         
         # Verificar se DCA está habilitado
         if not getattr(self.settings, "DCA_ENABLED", True):
@@ -660,12 +908,34 @@ class PositionMonitor:
             side = 'BUY' if trade.direction == 'LONG' else 'SELL'
             
             try:
+                leverage = int(trade.leverage or 1)
+                required_margin = (additional_qty * current_price) / max(1, leverage)
+                balance_info = await binance_client.get_account_balance()
+                available_balance = float(balance_info.get("available_balance", 0) or 0) if balance_info else 0.0
+
+                if available_balance and required_margin > available_balance:
+                    logger.warning(
+                        f"⚠️ DCA abortado: margem {required_margin:.2f} > disponível {available_balance:.2f}"
+                    )
+                    return False
+
+                position_side = None
+                try:
+                    position_side = await binance_client.get_position_side(trade.direction)
+                except Exception as e:
+                    logger.debug(f"Position side lookup failed: {e}")
+
+                order_params = {
+                    "symbol": trade.symbol,
+                    "side": side,
+                    "type": "MARKET",
+                    "quantity": additional_qty
+                }
+                if position_side:
+                    order_params["positionSide"] = position_side
                 order = await asyncio.to_thread(
                     self.client.futures_create_order,
-                    symbol=trade.symbol,
-                    side=side,
-                    type='MARKET',
-                    quantity=additional_qty
+                    **order_params
                 )
                 
                 avg_price = float(order['avgPrice'])
@@ -673,17 +943,19 @@ class PositionMonitor:
                 # Atualizar preço médio e quantidade
                 total_qty = trade.quantity + additional_qty
                 new_entry = ((trade.entry_price * trade.quantity) + (avg_price * additional_qty)) / total_qty
+                old_entry = float(trade.entry_price or 0)
+                old_stop = float(trade.stop_loss or 0)
+                risk_pct = (abs(old_entry - old_stop) / old_entry) if old_entry > 0 else 0.0
                 
                 trade.quantity = total_qty
                 trade.entry_price = new_entry
                 trade.dca_count = current_dca + 1
                 
-                # Ajustar Stop Loss para novo preço médio (mantendo % de risco original ou ajustando)
-                # Vamos manter a distância original em %
+                # Ajustar Stop Loss mantendo o risco percentual anterior
                 if trade.direction == 'LONG':
-                    trade.stop_loss = new_entry * (1 - (abs(trade.entry_price - trade.stop_loss)/trade.entry_price))
+                    trade.stop_loss = new_entry * (1 - risk_pct)
                 else:
-                    trade.stop_loss = new_entry * (1 + (abs(trade.stop_loss - trade.entry_price)/trade.entry_price))
+                    trade.stop_loss = new_entry * (1 + risk_pct)
                 
                 db.commit()
                 
@@ -703,15 +975,20 @@ class PositionMonitor:
                     # Verificar preferência de preço de gatilho
                     working_type = 'MARK_PRICE' if getattr(self.settings, "USE_MARK_PRICE_FOR_STOPS", True) else 'CONTRACT_PRICE'
 
+                    sl_params = {
+                        "symbol": trade.symbol,
+                        "side": sl_side,
+                        "type": "STOP_MARKET",
+                        "stopPrice": sl_price,
+                        "quantity": total_qty,
+                        "reduceOnly": True,
+                        "workingType": working_type
+                    }
+                    if position_side:
+                        sl_params["positionSide"] = position_side
                     await asyncio.to_thread(
                         self.client.futures_create_order,
-                        symbol=trade.symbol,
-                        side=sl_side,
-                        type='STOP_MARKET',
-                        stopPrice=sl_price,
-                        quantity=total_qty,
-                        reduceOnly=True,
-                        workingType=working_type
+                        **sl_params
                     )
                     logger.info(f"🛡️ Stop Loss atualizado na Binance: {total_qty:.4f} @ {sl_price:.4f}")
                     
@@ -747,6 +1024,9 @@ class PositionMonitor:
         ✅ NOVO v5.0: Time-Based Exit
         Fecha posição se segurada por muito tempo com pouco lucro.
         """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "time_exit"):
+            return False
         
         max_hours = int(getattr(self.settings, "TIME_EXIT_HOURS", 6))
         min_profit = float(getattr(self.settings, "TIME_EXIT_MIN_PROFIT_PCT", 0.5))
@@ -802,21 +1082,28 @@ class PositionMonitor:
         
         try:
             side = 'SELL' if trade.direction == 'LONG' else 'BUY'
+            position_side = None
+            try:
+                position_side = await binance_client.get_position_side(trade.direction)
+            except Exception as e:
+                logger.debug(f"Position side lookup failed: {e}")
             
             # Obter informações do símbolo para precisão e limites
             try:
                 symbol_info = await binance_client.get_symbol_info(trade.symbol)
                 step = symbol_info.get('step_size') if symbol_info else None
                 
-                # ✅ Verificar Max Quantity (MARKET_LOT_SIZE)
-                max_qty = float('inf')
+                # ✅ Verificar Max Quantity (MARKET_LOT_SIZE/LOT_SIZE ou campo max_quantity)
+                max_qty = float(symbol_info.get('max_quantity', float('inf'))) if symbol_info else float('inf')
                 if symbol_info and 'filters' in symbol_info:
                     for f in symbol_info['filters']:
                         if f['filterType'] == 'MARKET_LOT_SIZE':
                             max_qty = float(f['maxQty'])
                             break
-                        elif f['filterType'] == 'LOT_SIZE':
+                        if f['filterType'] == 'LOT_SIZE':
                             max_qty = float(f['maxQty'])
+                if max_qty <= 0:
+                    max_qty = float('inf')
                             
             except Exception as e:
                 logger.error(f"Erro ao obter info do símbolo {trade.symbol}: {e}")
@@ -840,13 +1127,18 @@ class PositionMonitor:
                 logger.info(f"📉 Fechando {trade.symbol}: Chunk {current_chunk} (Restante: {remaining_qty})")
                 
                 try:
+                    order_params = {
+                        "symbol": trade.symbol,
+                        "side": side,
+                        "type": "MARKET",
+                        "quantity": current_chunk,
+                        "reduceOnly": True
+                    }
+                    if position_side:
+                        order_params["positionSide"] = position_side
                     order = await asyncio.to_thread(
                         self.client.futures_create_order,
-                        symbol=trade.symbol,
-                        side=side,
-                        type='MARKET',
-                        quantity=current_chunk,
-                        reduceOnly=True
+                        **order_params
                     )
                     orders.append(order)
                     remaining_qty -= current_chunk
@@ -882,7 +1174,41 @@ class PositionMonitor:
 
             # ✅ NOVO v4.0: Finalizar tracking de métricas da posição
             self._finalize_position_tracking(trade.symbol, trade.entry_price, current_price, trade.direction)
-            
+
+            # ✅ PROFIT OPTIMIZATION - Calculate Final Net P&L (with all fees and funding)
+            if getattr(self.settings, "TRACK_FEES_PER_TRADE", True):
+                try:
+                    from modules.profit_optimizer import profit_optimizer
+
+                    # Calculate final net P&L at exit
+                    final_pnl_data = await profit_optimizer.calculate_net_pnl(
+                        trade,
+                        current_price,
+                        entry_was_maker=getattr(trade, 'is_maker_entry', False),
+                        exit_is_maker=getattr(trade, 'is_maker_exit', False)
+                    )
+
+                    # Update final values
+                    trade.entry_fee = final_pnl_data.get('entry_fee', 0.0)
+                    trade.exit_fee = final_pnl_data.get('exit_fee', 0.0)
+                    trade.funding_cost = final_pnl_data.get('funding_cost', 0.0)
+                    trade.net_pnl = final_pnl_data.get('net_pnl', 0.0)
+
+                    logger.info(
+                        f"📊 {trade.symbol} P&L BREAKDOWN:\n"
+                        f"  Gross P&L: ${final_pnl_data.get('gross_pnl', 0):+.2f}\n"
+                        f"  Entry Fee: -${final_pnl_data.get('entry_fee', 0):.2f}\n"
+                        f"  Exit Fee: -${final_pnl_data.get('exit_fee', 0):.2f}\n"
+                        f"  Funding Cost: -${final_pnl_data.get('funding_cost', 0):.2f}\n"
+                        f"  NET P&L: ${final_pnl_data.get('net_pnl', 0):+.2f}\n"
+                        f"  Fee Impact: {final_pnl_data.get('fee_impact_pct', 0):.1f}%"
+                    )
+
+                except Exception as e:
+                    logger.debug(f"Error calculating final net P&L: {e}")
+                    # Fallback: use gross P&L
+                    trade.net_pnl = trade.pnl
+
             db.commit()
             
             logger.info(
@@ -988,6 +1314,21 @@ class PositionMonitor:
         
         logger.warning(message)
         self.warning_cache[key] = current_time
+
+    def _whitelist_allows(self, symbol: str) -> bool:
+        settings = get_settings()
+        wl = [str(x).upper() for x in (getattr(settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
+        if not wl:
+            return True
+        if not bool(getattr(settings, "SCANNER_STRICT_WHITELIST", False)):
+            return True
+        return str(symbol).upper() in wl
+
+    def _skip_action_if_not_whitelisted(self, symbol: str, action: str) -> bool:
+        if self._whitelist_allows(symbol):
+            return False
+        self._log_once(f"wl_block_{action}_{symbol}", f"Whitelist block: {symbol} action {action} skipped")
+        return True
 
 
     def _update_mae_mfe(self, symbol: str, current_price: float, entry_price: float, direction: str):

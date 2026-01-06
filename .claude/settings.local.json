@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(alembic revision:*)",
+      "Bash(python -m alembic revision:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(cat:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(cd:*)",
+      "Bash(docker restart:*)",
+      "Bash(curl:*)",
+      "Bash(docker cp:*)",
+      "Bash(echo:*)",
+      "Bash(bash:*)",
+      "Bash(__NEW_LINE__ docker exec trading-bot-db psql -U trading_bot -d trading_bot_db -c \"\nSELECT \n    symbol, \n    direction, \n    entry_price, \n    quantity,\n    leverage,\n    take_profit_1,\n    take_profit_2,\n    take_profit_3,\n    stop_loss,\n    pnl_percentage,\n    status,\n    opened_at,\n    order_id\nFROM trades \nWHERE status=''open''\nORDER BY opened_at DESC\nLIMIT 5;\n\")",
+      "Bash(__NEW_LINE__ echo \"✅ Log criado com sucesso\")",
+      "Bash(git add:*)"
+    ]
+  }
+}

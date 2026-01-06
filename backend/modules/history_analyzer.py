@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from config.settings import get_settings
 from models.database import get_db
@@ -32,7 +32,7 @@ class HistoryAnalyzer:
                 Trade.symbol,
                 func.count(Trade.id).label('total_trades'),
                 func.sum(Trade.pnl).label('total_pnl'),
-                func.sum(func.case((Trade.pnl > 0, 1), else_=0)).label('wins')
+                func.sum(case((Trade.pnl > 0, 1), else_=0)).label('wins')
             ).filter(
                 Trade.status == 'closed',
                 Trade.closed_at >= cutoff_date
@@ -66,7 +66,7 @@ class HistoryAnalyzer:
             if 'db' in locals():
                 db.close()
 
-    async def get_realized_pnl_from_binance(self, days: int = 30) -> float:
+    async def get_realized_pnl_from_binance(self, days: int = 30) -> Dict[str, float]:
         """Busca PnL realizado direto da Binance (inclui taxas e funding)"""
         try:
             # Income history retorna array de dicts com 'incomeType': 'REALIZED_PNL', 'COMMISSION', 'FUNDING_FEE'
@@ -76,7 +76,8 @@ class HistoryAnalyzer:
             # Precisamos converter days para start_time em ms
             start_time = int((datetime.now() - timedelta(days=days)).timestamp() * 1000)
             
-            income_history = await binance_client.client.futures_income_history(
+            income_history = await asyncio.to_thread(
+                binance_client.client.futures_income_history,
                 startTime=start_time,
                 limit=1000
             )

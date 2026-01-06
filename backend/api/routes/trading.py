@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
+import json
+import os
 
 from modules.signal_generator import signal_generator
 from modules.order_executor import order_executor
@@ -277,7 +279,8 @@ async def get_bot_status():
         "scan_interval": autonomous_bot.scan_interval,
         "min_score": autonomous_bot.min_score,
         "max_positions": autonomous_bot.max_positions,
-        "circuit_breaker_active": position_monitor.circuit_breaker_active
+        "circuit_breaker_active": position_monitor.circuit_breaker_active,
+        "symbols": list(autonomous_bot.bot_config.symbols_to_scan)
     }
 
 
@@ -483,7 +486,8 @@ async def leverage_preview(symbol: str, entry_price: float, quantity: float):
 async def update_bot_config(
     scan_interval_minutes: int = None,
     min_score: int = None,
-    max_positions: int = None
+    max_positions: int = None,
+    symbols: str = None
 ):
     """Atualiza configurações do bot"""
     
@@ -495,6 +499,11 @@ async def update_bot_config(
     
     if max_positions is not None:
         autonomous_bot.max_positions = max_positions
+
+    if symbols is not None:
+        cleaned = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        os.environ["SYMBOL_WHITELIST"] = json.dumps(cleaned)
+        autonomous_bot.reload_settings()
     
     return {
         "success": True,
@@ -502,7 +511,8 @@ async def update_bot_config(
         "config": {
             "scan_interval": autonomous_bot.scan_interval,
             "min_score": autonomous_bot.min_score,
-            "max_positions": autonomous_bot.max_positions
+            "max_positions": autonomous_bot.max_positions,
+            "symbols": list(autonomous_bot.bot_config.symbols_to_scan)
         }
     }
 

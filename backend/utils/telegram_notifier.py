@@ -132,10 +132,12 @@ class TelegramNotifier:
         leverage = trade_data['leverage']
         stop_loss = trade_data['stop_loss']
         take_profit = trade_data.get('take_profit_1', 0)
-        
+        tp_strategy = trade_data.get('tp_strategy', 'STATIC')
+
         entry_display = f"{entry_price:.6f}" if entry_price > 0 else "Market"
         emoji = "🟢" if direction == "LONG" else "🔴"
-        
+        strategy_emoji = "✨" if tp_strategy == "FIBONACCI" else "📊" if tp_strategy == "CONSERVATIVE" else "📍"
+
         message = f"""
 {emoji} <b>TRADE ABERTO</b>
 
@@ -147,6 +149,7 @@ class TelegramNotifier:
 
 🛑 <b>SL:</b> {stop_loss:.6f}
 🎯 <b>TP:</b> {take_profit:.6f}
+{strategy_emoji} <b>Strategy:</b> {tp_strategy}
 """
         await self.send_message(message)
     
@@ -189,19 +192,36 @@ class TelegramNotifier:
 """
         await self.send_message(message)
     
-    async def notify_breakeven_activated(self, symbol: str, pnl_pct: float, breakeven_price: float):
+    async def notify_breakeven_activated(self, symbol: str, entry_price: float, breakeven_price: float, pnl_pct: float):
         """Notifica quando break-even é ativado"""
         message = f"""
-🛡️ <b>BREAK-EVEN ATIVADO</b>
+🛡️ <b>BREAKEVEN STOP ATIVADO</b>
 
 📊 <b>Símbolo:</b> {symbol}
-💰 <b>Lucro Atual:</b> +{pnl_pct:.2f}%
-🔒 <b>Novo Stop:</b> {breakeven_price:.6f}
+💰 <b>Entry:</b> {entry_price:.6f}
+🔒 <b>Breakeven:</b> {breakeven_price:.6f}
+📈 <b>Lucro Atual:</b> +{pnl_pct:.2f}%
 
-✅ Lucro protegido! Risco zero.
+✅ Ganho protegido! Risco zero a partir de agora.
 """
         await self.send_message(message)
-    
+
+    async def notify_breakeven_hit(self, symbol: str, entry_price: float, breakeven_price: float, exit_price: float, pnl_pct: float):
+        """Notifica quando breakeven stop é acionado"""
+        message = f"""
+🛡️ <b>BREAKEVEN STOP EXECUTADO</b>
+
+📊 <b>Símbolo:</b> {symbol}
+📈 <b>Entry:</b> {entry_price:.6f}
+🔒 <b>Breakeven:</b> {breakeven_price:.6f}
+📉 <b>Exit:</b> {exit_price:.6f}
+
+💰 <b>P&L Final:</b> {pnl_pct:+.2f}%
+
+✅ Posição fechada em breakeven - nenhuma perda!
+"""
+        await self.send_message(message)
+
     async def notify_trailing_activated(self, symbol: str, pnl_pct: float):
         """Notifica quando trailing stop é ativado"""
         message = f"""

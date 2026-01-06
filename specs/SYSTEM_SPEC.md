@@ -32,5 +32,5 @@ The **Antigravity Crypto Trading Bot** is an automated trading system for Binanc
 ## 4. Key Constraints
 - **Latency**: Analysis loop < 5 seconds.
 - **Rate Limits**: Respect Binance API weight limits (1200/min).
-- **Database**: Async IO for all DB operations.
+- **Database**: Sync SQLAlchemy in current implementation; async IO is recommended for scale.
 - **Security**: No logging of API Keys.

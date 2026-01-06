@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import os
+import json
 from config.settings import get_settings, reload_settings
 from modules.autonomous_bot import autonomous_bot
 
@@ -14,6 +15,7 @@ class ConfigUpdate(BaseModel):
     default_leverage: Optional[int] = None
     bot_min_score: Optional[int] = None
     bot_scan_interval_minutes: Optional[int] = None
+    symbol_whitelist: Optional[List[str]] = None
 
 @router.get("/")
 async def get_config():
@@ -25,7 +27,8 @@ async def get_config():
         "default_leverage": settings.DEFAULT_LEVERAGE,
         "bot_min_score": settings.BOT_MIN_SCORE,
         "bot_scan_interval_minutes": settings.BOT_SCAN_INTERVAL_MINUTES,
-        "testnet": settings.BINANCE_TESTNET
+        "testnet": settings.BINANCE_TESTNET,
+        "symbol_whitelist": list(getattr(settings, "SYMBOL_WHITELIST", []))
     }
 
 @router.patch("/")
@@ -50,6 +53,8 @@ async def update_config(config: ConfigUpdate):
             os.environ["BOT_MIN_SCORE"] = str(config.bot_min_score)
         if config.bot_scan_interval_minutes is not None:
             os.environ["BOT_SCAN_INTERVAL_MINUTES"] = str(config.bot_scan_interval_minutes)
+        if config.symbol_whitelist is not None:
+            os.environ["SYMBOL_WHITELIST"] = json.dumps([s.strip().upper() for s in config.symbol_whitelist if str(s).strip()])
             
         # Recarregar settings (limpar cache)
         new_settings = reload_settings()

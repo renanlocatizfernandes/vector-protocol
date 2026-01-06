@@ -9,9 +9,12 @@ venv/
 env/
 ENV/
 
-# Environment
+# Environment - NUNCA COMMITAR
 .env
 .env.local
+.env.docker
+.env.production
+*.env
 
 # IDEs
 .vscode/
