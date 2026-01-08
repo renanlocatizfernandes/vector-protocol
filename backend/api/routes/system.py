@@ -6,9 +6,14 @@ import subprocess
 import os
 import glob
 import asyncio
+import redis
+import json
 from utils.binance_client import binance_client
+from utils.logger import setup_logger
+from config.settings import get_settings
 
 router = APIRouter()
+logger = setup_logger("system_routes")
 
 LOGS_DIR = Path("/logs")  # Em Docker, mapeado para ./logs na raiz do projeto
 DEFAULT_TAIL = 300
@@ -216,4 +221,138 @@ async def userstream_stop():
         return {"ok": True, **status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========================================
+# HEALTH MONITORING - Phase 4
+# ========================================
+
+@router.get("/errors/recent", summary="Get recent errors from error aggregator")
+async def get_recent_errors(
+    limit: int = Query(50, ge=1, le=500, description="Maximum errors to return"),
+    component: Optional[str] = Query(None, description="Filter by component"),
+    level: Optional[str] = Query(None, description="Filter by log level (ERROR, CRITICAL)")
+):
+    """
+    Returns recent errors tracked by error aggregator.
+
+    Errors are stored in Redis sorted set for fast retrieval.
+    """
+    from modules.error_aggregator import error_aggregator
+
+    try:
+        errors = await error_aggregator.get_recent_errors(
+            limit=limit,
+            component=component,
+            level=level
+        )
+        return {
+            "errors": errors,
+            "count": len(errors),
+            "limit": limit,
+            "filters": {"component": component, "level": level}
+        }
+    except Exception as e:
+        logger.error(f"Error getting recent errors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/errors/rate", summary="Get error rate statistics")
+async def get_error_rate(
+    component: Optional[str] = Query(None, description="Filter by component"),
+    hours: int = Query(24, ge=1, le=168, description="Hours to analyze")
+):
+    """
+    Returns error rate statistics per hour.
+
+    Useful for identifying error spikes and trends.
+    """
+    from modules.error_aggregator import error_aggregator
+
+    try:
+        rate_data = await error_aggregator.get_error_rate(
+            component=component,
+            hours=hours
+        )
+        return rate_data
+    except Exception as e:
+        logger.error(f"Error getting error rate: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/errors/summary", summary="Get error summary statistics")
+async def get_error_summary():
+    """
+    Returns error summary grouped by component and level.
+    """
+    from modules.error_aggregator import error_aggregator
+
+    try:
+        summary = await error_aggregator.get_error_summary()
+        return summary
+    except Exception as e:
+        logger.error(f"Error getting error summary: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/latency", summary="Get bot cycle latency statistics")
+async def get_latency_stats():
+    """
+    Returns latency statistics from last bot cycle.
+
+    Includes:
+    - scan: Market scanning time
+    - signal: Signal generation time
+    - execution: Order execution time
+    - total: Total cycle time
+    """
+    try:
+        settings = get_settings()
+        redis_client = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=0,
+            decode_responses=True
+        )
+
+        # Get last cycle latency
+        last_cycle_json = redis_client.get("latency:last_cycle")
+        if last_cycle_json:
+            last_cycle = json.loads(last_cycle_json)
+        else:
+            last_cycle = {}
+
+        # Determine SLA status (warning if total > 5 seconds)
+        total_latency = last_cycle.get('total', 0)
+        sla_status = "ok" if total_latency < 5.0 else "warning" if total_latency < 10.0 else "critical"
+
+        return {
+            "last_cycle": last_cycle,
+            "sla_status": sla_status,
+            "sla_threshold": 5.0,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting latency stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/market/conditions", summary="Get market conditions monitoring")
+async def get_market_conditions():
+    """
+    Returns current market conditions including:
+    - High funding rate symbols
+    - Trending symbols (strong price movement)
+    - Market volatility index (0-100)
+    """
+    from modules.market_monitor import market_monitor
+
+    try:
+        conditions = await market_monitor.get_market_conditions()
+        return conditions
+    except Exception as e:
+        logger.error(f"Error getting market conditions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 

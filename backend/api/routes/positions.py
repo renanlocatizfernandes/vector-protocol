@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from models.database import get_db
 from typing import List, Dict, Optional, Tuple
 from utils.binance_client import binance_client
 from modules.risk_manager import risk_manager
 from api.models.trades import Trade
+from utils.logger import setup_logger
 
 router = APIRouter()
+logger = setup_logger("positions_routes")
 
 @router.get("/")
 async def get_positions(db: Session = Depends(get_db)):
@@ -45,7 +47,7 @@ async def get_dashboard(db: Session = Depends(get_db)):
         except Exception:
             account_balance = 0.0
     
-    # Trades abertos
+    # Trades abertos (DB)
     open_trades = db.query(Trade).filter(Trade.status.in_(["open", "OPEN"])).all()
     # Coleta modos de margem das posições vivas na corretora (Cross/Isolated)
     try:
@@ -54,7 +56,7 @@ async def get_dashboard(db: Session = Depends(get_db)):
     except Exception:
         margin_map = {}
     
-    # Métricas do portfólio
+    # Métricas do portfólio (DB)
     open_positions_data = [
         {
             'symbol': t.symbol,
@@ -63,9 +65,77 @@ async def get_dashboard(db: Session = Depends(get_db)):
         }
         for t in open_trades
     ]
-    
+
+    # Posições vivas da exchange (quando houver)
+    exchange_positions = []
+    if balance_info:
+        for p in balance_info.get("positions", []) or []:
+            symbol = p.get("symbol")
+            try:
+                position_amt = float(p.get("positionAmt", 0) or 0)
+            except Exception:
+                position_amt = 0.0
+            if not symbol or abs(position_amt) <= 0:
+                continue
+
+            try:
+                entry_price = float(p.get("entryPrice", 0) or 0)
+            except Exception:
+                entry_price = 0.0
+            try:
+                mark_price = float(p.get("markPrice", 0) or 0)
+            except Exception:
+                mark_price = 0.0
+            try:
+                leverage = float(p.get("leverage", 0) or 0)
+            except Exception:
+                leverage = 0.0
+            try:
+                unrealized = float(p.get("unRealizedProfit", p.get("unrealizedProfit", 0) or 0))
+            except Exception:
+                unrealized = 0.0
+
+            qty = abs(position_amt)
+            direction = "LONG" if position_amt > 0 else "SHORT"
+            margin_info = margin_map.get(symbol) or {}
+
+            pnl_pct = None
+            base_notional = qty * entry_price if entry_price > 0 else 0.0
+            if base_notional > 0:
+                pnl_pct = (unrealized / base_notional) * 100
+
+            exchange_positions.append({
+                "symbol": symbol,
+                "direction": direction,
+                "entry_price": entry_price,
+                "current_price": mark_price or entry_price,
+                "quantity": qty,
+                "leverage": leverage,
+                "pnl": unrealized,
+                "pnl_percentage": pnl_pct,
+                "opened_at": None,
+                "margin_mode": margin_info.get("margin_mode"),
+                "isolated": margin_info.get("isolated"),
+            })
+
+    use_exchange = len(exchange_positions) > 0
+    positions_source = "exchange" if use_exchange else "db"
+
+    if use_exchange:
+        positions_for_metrics = [
+            {
+                "symbol": p["symbol"],
+                "position_size": float(p.get("quantity") or 0)
+                * float(p.get("current_price") or p.get("entry_price") or 0),
+                "unrealized_pnl": float(p.get("pnl") or 0),
+            }
+            for p in exchange_positions
+        ]
+    else:
+        positions_for_metrics = open_positions_data
+
     portfolio_metrics = risk_manager.calculate_portfolio_metrics(
-        open_positions_data, 
+        positions_for_metrics,
         account_balance
     )
     
@@ -105,6 +175,8 @@ async def get_dashboard(db: Session = Depends(get_db)):
             }
             for t in open_trades
         ],
+        "exchange_positions": exchange_positions,
+        "positions_source": positions_source,
         "statistics": {
             "total_trades": total_trades,
             "open_trades": len(open_trades),
@@ -265,6 +337,80 @@ async def reconcile_positions(db: Session, strict: bool = False) -> Dict[str, ob
         "closed_strict": closed_strict,
         "exchange_symbols": sorted(list(exchange_symbols_nonzero))
     }
+
+
+@router.get("/sync/status")
+async def get_sync_status(db: Session = Depends(get_db)):
+    """
+    Returns current sync health status (Phase 4).
+
+    Compares DB positions vs Exchange positions and reports divergences.
+    """
+    try:
+        import redis
+        from config.settings import get_settings
+        from datetime import datetime
+
+        settings = get_settings()
+
+        # Get last auto-sync time from Redis
+        redis_client = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=0,
+            decode_responses=True
+        )
+        last_sync = redis_client.get("positions:last_sync_time")
+        last_sync_dt = datetime.fromisoformat(last_sync) if last_sync else None
+
+        # Compare DB vs Exchange positions
+        exchange_positions = await _get_exchange_positions_map()
+        db_positions = db.query(Trade).filter(Trade.status == 'open').all()
+
+        db_symbols = {
+            t.symbol: float(t.quantity) * (1 if t.direction == 'LONG' else -1)
+            for t in db_positions
+        }
+
+        # Find divergences
+        divergences = []
+        all_symbols = set(list(exchange_positions.keys()) + list(db_symbols.keys()))
+
+        for symbol in all_symbols:
+            exchange_qty = exchange_positions.get(symbol, 0)
+            db_qty = db_symbols.get(symbol, 0)
+
+            # Allow tiny float differences
+            if abs(exchange_qty - db_qty) > 0.0001:
+                divergences.append({
+                    "symbol": symbol,
+                    "exchange_qty": exchange_qty,
+                    "db_qty": db_qty,
+                    "delta": round(exchange_qty - db_qty, 4)
+                })
+
+        # Calculate time since last sync
+        last_sync_ago_seconds = None
+        if last_sync_dt:
+            last_sync_ago_seconds = (datetime.utcnow() - last_sync_dt).total_seconds()
+
+        status = "ok" if len(divergences) == 0 else "warning"
+
+        return {
+            "last_sync": last_sync_dt.isoformat() if last_sync_dt else None,
+            "last_sync_ago_seconds": last_sync_ago_seconds,
+            "auto_sync_enabled": settings.POSITIONS_AUTO_SYNC_ENABLED,
+            "auto_sync_interval_minutes": settings.POSITIONS_AUTO_SYNC_MINUTES,
+            "divergences": divergences,
+            "divergence_count": len(divergences),
+            "status": status,
+            "db_positions_count": len(db_positions),
+            "exchange_positions_count": len([q for q in exchange_positions.values() if q != 0])
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting sync status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/sync")

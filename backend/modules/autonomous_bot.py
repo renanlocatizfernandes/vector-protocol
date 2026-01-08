@@ -5,6 +5,8 @@ Autonomous Bot - PROFESSIONAL VERSION v5.0
 import asyncio
 import time
 import pandas as pd
+import redis
+import json
 from typing import List, Dict
 from datetime import datetime, timezone
 
@@ -43,8 +45,9 @@ class AutonomousBot:
         
         # Registrar no Supervisor
         supervisor.register_bot(self)
-        self.base_scan_interval = int(getattr(get_settings(), "BOT_SCAN_INTERVAL_MINUTES", 1)) * 60
-        self.base_max_positions = 15
+        settings = get_settings()
+        self.base_scan_interval = int(getattr(settings, "BOT_SCAN_INTERVAL_MINUTES", 1)) * 60
+        self.base_max_positions = int(getattr(settings, "BOT_MAX_POSITIONS", getattr(settings, "MAX_POSITIONS", 15)))
         self.base_max_new_per_cycle = 5
         self.pyramiding_enabled = True
         self.pyramiding_threshold = 5.0
@@ -672,23 +675,37 @@ class AutonomousBot:
     async def add_strategic_positions(self, count: int) -> dict:
         """Abre novas posições utilizando o pipeline estratégico."""
         try:
+            # Track latency for health monitoring
+            latency = {}
+            cycle_start = time.time()
+
             target = max(1, int(count))
             account_balance = await self._get_account_balance()
             open_positions_exch = await self._get_open_positions_from_binance()
             available_slots = min(target, max(0, self.max_positions - len(open_positions_exch)), self.max_new_positions_per_cycle)
-            
+
             if available_slots <= 0:
                 return {"success": False, "message": "Sem slots disponíveis", "opened": 0}
 
+            # Track scan latency
+            scan_start = time.time()
             market_sentiment = await market_filter.check_market_sentiment()
             scan_results = await market_scanner.scan_market()
+            latency['scan'] = round(time.time() - scan_start, 3)
+
+            # Track signal generation latency
+            signal_start = time.time()
             signals = await signal_generator.generate_signal(scan_results)
+            latency['signal'] = round(time.time() - signal_start, 3)
+
             if not signals:
                 return {"success": False, "message": "Nenhum sinal gerado", "opened": 0}
 
             approved_signals = [s for s in signals if await market_filter.should_trade_symbol(s, market_sentiment)]
             filtered_signals = await correlation_filter.filter_correlated_signals(approved_signals, open_positions_exch, max_correlation=0.7)
-            
+
+            # Track execution latency
+            exec_start = time.time()
             final_signals = filtered_signals[:available_slots]
             opened = 0
             for sig in final_signals:
@@ -699,6 +716,24 @@ class AutonomousBot:
                 else:
                     logger.warning(f"❌ Rejeitado {sig['symbol']}: {exec_res.get('reason')}")
                 await asyncio.sleep(1)
+            latency['execution'] = round(time.time() - exec_start, 3)
+
+            # Calculate total latency
+            latency['total'] = round(time.time() - cycle_start, 3)
+
+            # Store latency in Redis for health monitoring
+            try:
+                settings = get_settings()
+                redis_client = redis.Redis(
+                    host=settings.REDIS_HOST,
+                    port=settings.REDIS_PORT,
+                    db=0,
+                    decode_responses=True
+                )
+                redis_client.setex("latency:last_cycle", 300, json.dumps(latency))
+                logger.debug(f"Latency tracked: {latency}")
+            except Exception as redis_err:
+                logger.debug(f"Failed to store latency in Redis: {redis_err}")
 
             if opened > 0:
                 await telegram_notifier.send_message(f"🚀 Abertura estratégica concluída\nAlvo: {target} | Abertas: {opened}")
