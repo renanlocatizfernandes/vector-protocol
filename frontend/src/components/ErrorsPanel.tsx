@@ -2,43 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface ErrorLog {
-    timestamp: string;
-    component: string;
-    level: string;
-    message: string;
-}
+import { getRecentErrors, getErrorRate, ErrorLog, ErrorRateResponse } from '@/services/api';
 
 export const ErrorsPanel: React.FC = () => {
     const [errors, setErrors] = useState<ErrorLog[]>([]);
-    const [errorRate, setErrorRate] = useState(0);
+    const [errorRate, setErrorRate] = useState<ErrorRateResponse | null>(null);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        // Mock data - will be replaced with real API calls in Phase 4
-        const mockErrors: ErrorLog[] = [
-            {
-                timestamp: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-                component: 'order_executor',
-                level: 'ERROR',
-                message: 'Insufficient margin for position'
-            },
-            {
-                timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-                component: 'signal_generator',
-                level: 'WARN',
-                message: 'Low confidence signal rejected'
-            },
-            {
-                timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-                component: 'binance_client',
-                level: 'ERROR',
-                message: 'Rate limit exceeded, retrying...'
+        const fetchData = async () => {
+            try {
+                const [errorsData, rateData] = await Promise.all([
+                    getRecentErrors(20),
+                    getErrorRate(undefined, 24)
+                ]);
+                setErrors(errorsData.errors);
+                setErrorRate(rateData);
+            } catch (err) {
+                console.error('Failed to fetch error data:', err);
+            } finally {
+                setLoading(false);
             }
-        ];
+        };
 
-        setErrors(mockErrors);
-        setErrorRate(2.5);
+        fetchData();
+        const interval = setInterval(fetchData, 30000); // Refresh every 30s
+        return () => clearInterval(interval);
     }, []);
 
     return (
@@ -49,35 +38,39 @@ export const ErrorsPanel: React.FC = () => {
                     Recent Errors
                 </CardTitle>
                 <CardDescription>
-                    Last 50 errors • {errorRate.toFixed(1)} errors/hour
+                    Last 20 errors • {errorRate?.average_per_hour.toFixed(1) || '0'} errors/hour
                 </CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {errors.length > 0 ? (
-                        errors.map((err, idx) => (
-                            <div key={idx} className="border-l-2 border-red-500 pl-3 py-2 bg-white/5 rounded-r">
-                                <div className="flex justify-between text-sm">
-                                    <span className="font-mono text-yellow-400">{err.component}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                        {new Date(err.timestamp).toLocaleTimeString()}
-                                    </span>
+                {loading ? (
+                    <div className="text-center py-8 text-muted-foreground">Loading...</div>
+                ) : (
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {errors.length > 0 ? (
+                            errors.map((err, idx) => (
+                                <div key={idx} className="border-l-2 border-red-500 pl-3 py-2 bg-white/5 rounded-r">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="font-mono text-yellow-400">{err.component}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                            {new Date(err.timestamp * 1000).toLocaleTimeString()}
+                                        </span>
+                                    </div>
+                                    <p className={cn(
+                                        "text-sm mt-1",
+                                        err.level === 'ERROR' ? 'text-red-400' : 'text-yellow-400'
+                                    )}>
+                                        {err.message}
+                                    </p>
                                 </div>
-                                <p className={cn(
-                                    "text-sm mt-1",
-                                    err.level === 'ERROR' ? 'text-red-400' : 'text-yellow-400'
-                                )}>
-                                    {err.message}
-                                </p>
+                            ))
+                        ) : (
+                            <div className="text-center py-8 text-muted-foreground">
+                                <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                <p>No errors in the last 24h ✅</p>
                             </div>
-                        ))
-                    ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                            <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                            <p>No errors in the last 24h</p>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

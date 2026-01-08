@@ -68,6 +68,43 @@ export type DailyStats = {
   best_trade?: { symbol?: string; pnl?: number };
   worst_trade?: { symbol?: string; pnl?: number };
   balance: number;
+  db?: {
+    total_pnl: number;
+    trades_count: number;
+    win_rate: number;
+    best_trade?: { symbol?: string; pnl?: number };
+    worst_trade?: { symbol?: string; pnl?: number };
+    day_start_local?: string;
+  };
+  exchange?: {
+    realized_pnl: number;
+    fees: number;
+    funding: number;
+    net_realized_pnl: number;
+    unrealized_pnl: number;
+    net_pnl: number;
+    total_wallet: number;
+    available_balance: number;
+    daily_start_balance?: number | null;
+    wallet_change?: number | null;
+    wallet_change_pct?: number | null;
+    intraday_peak_balance?: number | null;
+    intraday_trough_balance?: number | null;
+    day_start_utc?: string;
+  };
+};
+
+export type RealizedDailyPoint = {
+  date: string;
+  realized_pnl: number;
+  fees: number;
+  funding: number;
+  net_pnl: number;
+};
+
+export type RealizedDailyResponse = {
+  days: number;
+  series: RealizedDailyPoint[];
 };
 
 export type DashboardData = {
@@ -88,6 +125,20 @@ export type DashboardData = {
     pnl_percentage?: number;
     opened_at?: string;
   }>;
+  exchange_positions?: Array<{
+    symbol: string;
+    direction: string;
+    entry_price: number;
+    current_price?: number;
+    quantity: number;
+    leverage?: number;
+    pnl?: number;
+    pnl_percentage?: number;
+    opened_at?: string | null;
+    margin_mode?: string | null;
+    isolated?: boolean | null;
+  }>;
+  positions_source?: string;
   statistics: {
     total_trades: number;
     open_trades: number;
@@ -157,6 +208,11 @@ export async function getDailyStats(): Promise<DailyStats> {
   return unwrap(res);
 }
 
+export async function getRealizedDailyStats(days: number = 7): Promise<RealizedDailyResponse> {
+  const res = await http.get("/api/trading/stats/realized-daily", { params: { days } });
+  return unwrap(res);
+}
+
 // Positions dashboard
 export async function getPositionsDashboard(): Promise<DashboardData> {
   const res = await http.get("/api/positions/dashboard");
@@ -170,6 +226,37 @@ export async function getPositionsDashboard(): Promise<DashboardData> {
  */
 export async function syncPositions(params?: { mode?: "normal" | "strict"; strict?: boolean }): Promise<any> {
   const res = await http.post("/api/positions/sync", null, { params });
+  return unwrap(res);
+}
+
+// Position actions
+export async function closePositionExchange(symbol: string): Promise<any> {
+  const res = await http.post("/api/trading/positions/close-exchange", null, { params: { symbol } });
+  return unwrap(res);
+}
+
+export async function setPositionStopLoss(params: { symbol: string; stop_price?: number; stop_pct?: number }): Promise<any> {
+  const res = await http.post("/api/trading/positions/stop-loss", null, { params });
+  return unwrap(res);
+}
+
+export async function setPositionTakeProfit(params: { symbol: string; take_profit_price?: number; take_profit_pct?: number }): Promise<any> {
+  const res = await http.post("/api/trading/positions/take-profit", null, { params });
+  return unwrap(res);
+}
+
+export async function setPositionBreakeven(symbol: string): Promise<any> {
+  const res = await http.post("/api/trading/positions/breakeven", null, { params: { symbol } });
+  return unwrap(res);
+}
+
+export async function setPositionTrailingStop(symbol: string): Promise<any> {
+  const res = await http.post("/api/trading/positions/trailing-stop", null, { params: { symbol } });
+  return unwrap(res);
+}
+
+export async function cancelOpenOrders(symbol: string): Promise<any> {
+  const res = await http.post("/api/positions/open-orders/cancel-all", null, { params: { symbol, dry_run: false } });
   return unwrap(res);
 }
 
@@ -406,6 +493,40 @@ export async function getPnlBySymbol(): Promise<PnlBySymbol[]> {
   return unwrap(res);
 }
 
+export type MarketTicker = {
+  symbol: string;
+  last_price: number;
+  price_change_percent: number;
+  quote_volume: number;
+};
+
+export type MarketTickersResponse = {
+  count: number;
+  tickers: MarketTicker[];
+};
+
+export async function getMarketTickers(limit: number = 200, quote: string = "USDT"): Promise<MarketTickersResponse> {
+  const res = await http.get("/api/market/tickers", { params: { limit, quote } });
+  return unwrap(res);
+}
+
+export type FearGreedPoint = {
+  value: number;
+  classification?: string | null;
+  timestamp: number;
+};
+
+export type FearGreedResponse = {
+  count: number;
+  data: FearGreedPoint[];
+  latest?: FearGreedPoint | null;
+};
+
+export async function getFearGreed(limit: number = 30): Promise<FearGreedResponse> {
+  const res = await http.get("/api/market/fear-greed", { params: { limit } });
+  return unwrap(res);
+}
+
 export interface HistoryAnalysis {
   symbol_stats: {
     symbol: string;
@@ -424,6 +545,144 @@ export interface HistoryAnalysis {
 
 export async function getHistoryAnalysis(): Promise<HistoryAnalysis> {
   const res = await http.get("/api/trading/history/analysis");
+  return unwrap(res);
+}
+
+// ========================================
+// PHASE 2-4: Health Monitoring & PnL
+// ========================================
+
+// Cumulative PnL (Phase 2)
+export interface CumulativePnlPoint {
+  date: string;
+  net_pnl: number;
+  cumulative: number;
+  realized: number;
+  fees: number;
+  funding: number;
+}
+
+export interface CumulativePnlResponse {
+  series: CumulativePnlPoint[];
+}
+
+export async function getCumulativePnl(days: number = 30): Promise<CumulativePnlResponse> {
+  const res = await http.get(`/api/trading/stats/cumulative-pnl`, { params: { days } });
+  return unwrap(res);
+}
+
+// Error Monitoring (Phase 4)
+export interface ErrorLog {
+  timestamp: number;
+  component: string;
+  level: string;
+  message: string;
+  traceback?: string;
+}
+
+export interface ErrorsResponse {
+  errors: ErrorLog[];
+  count: number;
+  limit: number;
+  filters: { component?: string; level?: string };
+}
+
+export async function getRecentErrors(limit: number = 50, component?: string, level?: string): Promise<ErrorsResponse> {
+  const params: any = { limit };
+  if (component) params.component = component;
+  if (level) params.level = level;
+  const res = await http.get("/api/system/errors/recent", { params });
+  return unwrap(res);
+}
+
+export interface ErrorRateResponse {
+  hourly: Array<{ hour: string; count: number }>;
+  total: number;
+  average_per_hour: number;
+}
+
+export async function getErrorRate(component?: string, hours: number = 24): Promise<ErrorRateResponse> {
+  const params: any = { hours };
+  if (component) params.component = component;
+  const res = await http.get("/api/system/errors/rate", { params });
+  return unwrap(res);
+}
+
+export interface ErrorSummary {
+  by_component: Record<string, number>;
+  by_level: Record<string, number>;
+  total: number;
+}
+
+export async function getErrorSummary(): Promise<ErrorSummary> {
+  const res = await http.get("/api/system/errors/summary");
+  return unwrap(res);
+}
+
+// Latency Monitoring (Phase 4)
+export interface LatencyStats {
+  last_cycle: {
+    scan?: number;
+    signal?: number;
+    execution?: number;
+    total?: number;
+  };
+  sla_status: string;
+  sla_threshold: number;
+  timestamp: string;
+}
+
+export async function getLatencyStats(): Promise<LatencyStats> {
+  const res = await http.get("/api/system/latency");
+  return unwrap(res);
+}
+
+// Sync Status (Phase 4)
+export interface SyncStatus {
+  last_sync: string | null;
+  last_sync_ago_seconds: number | null;
+  auto_sync_enabled: boolean;
+  auto_sync_interval_minutes: number;
+  divergences: Array<{
+    symbol: string;
+    exchange_qty: number;
+    db_qty: number;
+    delta: number;
+  }>;
+  divergence_count: number;
+  status: string;
+  db_positions_count: number;
+  exchange_positions_count: number;
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+  const res = await http.get("/api/positions/sync/status");
+  return unwrap(res);
+}
+
+// Market Conditions (Phase 4)
+export interface MarketConditions {
+  high_funding: Array<{
+    symbol: string;
+    funding_rate: number;
+    funding_rate_pct: number;
+    next_funding_time?: number;
+    mark_price: number;
+  }>;
+  trending_symbols: Array<{
+    symbol: string;
+    price_change_pct: number;
+    volume: number;
+    volume_usd: string;
+    price: number;
+    direction: string;
+  }>;
+  volatility_index: number;
+  timestamp: string;
+}
+
+export async function getMarketConditions(): Promise<MarketConditions> {
+  const res = await http.get("/api/system/market/conditions");
   return unwrap(res);
 }
 
