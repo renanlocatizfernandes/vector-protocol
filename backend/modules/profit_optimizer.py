@@ -500,6 +500,264 @@ class ProfitOptimizer:
             logger.debug(f"Error calculating funding cost (will return 0): {e}")
             return 0.0
 
+    async def get_real_fees_for_position(
+        self,
+        symbol: str,
+        entry_time: Optional[datetime] = None,
+        exit_time: Optional[datetime] = None,
+        entry_order_id: Optional[int] = None
+    ) -> Dict:
+        """
+        Fetch REAL commission fees from trade history API.
+        Replaces estimated fees with actual data from Binance.
+
+        Args:
+            symbol: Trading symbol
+            entry_time: Position entry time (optional, for filtering)
+            exit_time: Position exit time (optional, None if still open)
+            entry_order_id: Entry order ID for precise matching
+
+        Returns:
+            {
+                'entry_fee': float,  # Actual commission on entry
+                'exit_fee': float,   # Actual commission on exit (0 if still open)
+                'total_fee': float,
+                'commission_asset': str  # Usually 'USDT'
+            }
+        """
+        try:
+            # Fetch trade history for this symbol
+            trades = await binance_client.get_account_trades(symbol=symbol, limit=1000)
+
+            if not trades:
+                logger.debug(f"No trade history found for {symbol}, using estimated fees")
+                return {'entry_fee': 0, 'exit_fee': 0, 'total_fee': 0, 'commission_asset': 'USDT'}
+
+            # Convert timestamps if datetime objects
+            entry_ts = int(entry_time.timestamp() * 1000) if entry_time else None
+            exit_ts = int(exit_time.timestamp() * 1000) if exit_time else None
+
+            entry_fee = 0.0
+            exit_fee = 0.0
+            commission_asset = 'USDT'
+
+            # Find entry trades
+            if entry_order_id:
+                # Precise match by order ID
+                entry_trades = [t for t in trades if t.get('orderId') == entry_order_id]
+            elif entry_ts:
+                # Match by time window (±5 minutes)
+                entry_trades = [
+                    t for t in trades
+                    if abs(t.get('time', 0) - entry_ts) < 300000  # 5 min tolerance
+                ]
+            else:
+                entry_trades = []
+
+            for trade in entry_trades:
+                entry_fee += float(trade.get('commission', 0))
+                commission_asset = trade.get('commissionAsset', 'USDT')
+
+            # Find exit trades (if position closed)
+            if exit_ts:
+                exit_trades = [
+                    t for t in trades
+                    if abs(t.get('time', 0) - exit_ts) < 300000  # 5 min tolerance
+                ]
+                for trade in exit_trades:
+                    exit_fee += float(trade.get('commission', 0))
+
+            total_fee = entry_fee + exit_fee
+
+            logger.debug(
+                f"{symbol}: Real fees: entry=${entry_fee:.4f}, exit=${exit_fee:.4f}, total=${total_fee:.4f}"
+            )
+
+            return {
+                'entry_fee': round(entry_fee, 4),
+                'exit_fee': round(exit_fee, 4),
+                'total_fee': round(total_fee, 4),
+                'commission_asset': commission_asset
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching real fees for {symbol}: {e}")
+            return {'entry_fee': 0, 'exit_fee': 0, 'total_fee': 0, 'commission_asset': 'USDT'}
+
+    async def get_real_funding_for_position(
+        self,
+        symbol: str,
+        entry_time: Optional[datetime] = None,
+        exit_time: Optional[datetime] = None
+    ) -> Dict:
+        """
+        Fetch REAL funding payments from income history API.
+        Replaces estimated funding with actual data from Binance.
+
+        Args:
+            symbol: Trading symbol
+            entry_time: Position entry time
+            exit_time: Position exit time (None if still open)
+
+        Returns:
+            {
+                'funding_cost': float,  # Total funding paid (negative) or received (positive)
+                'funding_count': int,   # Number of funding periods
+                'avg_funding_rate': float
+            }
+        """
+        try:
+            # Fetch funding history for this symbol
+            funding_history = await binance_client.get_income_history(
+                symbol=symbol,
+                income_type='FUNDING_FEE',
+                limit=1000
+            )
+
+            if not funding_history:
+                logger.debug(f"No funding history found for {symbol}")
+                return {'funding_cost': 0, 'funding_count': 0, 'avg_funding_rate': 0}
+
+            # Convert timestamps
+            entry_ts = int(entry_time.timestamp() * 1000) if entry_time else 0
+            exit_ts = int(exit_time.timestamp() * 1000) if exit_time else int(datetime.now().timestamp() * 1000)
+
+            # Filter funding payments within time window
+            funding_in_window = [
+                f for f in funding_history
+                if entry_ts <= f.get('time', 0) <= exit_ts
+            ]
+
+            if not funding_in_window:
+                return {'funding_cost': 0, 'funding_count': 0, 'avg_funding_rate': 0}
+
+            # Sum all funding payments (negative = paid, positive = received)
+            total_funding = sum(float(f.get('income', 0)) for f in funding_in_window)
+            funding_count = len(funding_in_window)
+
+            # Calculate average funding rate (approximate)
+            avg_funding_rate = (total_funding / funding_count) if funding_count > 0 else 0
+
+            logger.debug(
+                f"{symbol}: Real funding: ${total_funding:.4f} across {funding_count} periods "
+                f"(avg rate: {avg_funding_rate*100:.4f}%)"
+            )
+
+            return {
+                'funding_cost': round(total_funding, 4),
+                'funding_count': funding_count,
+                'avg_funding_rate': round(avg_funding_rate, 6)
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching real funding for {symbol}: {e}")
+            return {'funding_cost': 0, 'funding_count': 0, 'avg_funding_rate': 0}
+
+    async def calculate_net_pnl_with_real_fees(self, trade) -> Dict:
+        """
+        Calculate NET P&L using REAL fees and funding from Binance API.
+        This is the production-grade version that replaces estimates with actual data.
+
+        Args:
+            trade: Trade object from database
+
+        Returns:
+            {
+                'gross_pnl': float,
+                'entry_fee': float,      # Real commission
+                'exit_fee': float,       # Real commission
+                'funding_cost': float,   # Real funding
+                'net_pnl': float,
+                'fee_breakdown': dict
+            }
+        """
+        try:
+            entry_price = float(trade.entry_price or 0)
+            quantity = float(trade.quantity or 0)
+            direction = trade.direction
+            current_price = float(trade.current_price or entry_price)
+
+            if entry_price <= 0 or quantity <= 0:
+                logger.warning(f"Invalid trade data for {trade.symbol}")
+                return {
+                    'gross_pnl': 0,
+                    'entry_fee': 0,
+                    'exit_fee': 0,
+                    'funding_cost': 0,
+                    'net_pnl': 0
+                }
+
+            # 1. Calculate Gross P&L (from current unrealized or final realized)
+            if hasattr(trade, 'pnl') and trade.pnl is not None:
+                # Use existing PnL from position monitor (from Binance unRealizedProfit)
+                gross_pnl = float(trade.pnl)
+            else:
+                # Calculate from entry/current price
+                if direction == 'LONG':
+                    gross_pnl = (current_price - entry_price) * quantity
+                else:  # SHORT
+                    gross_pnl = (entry_price - current_price) * quantity
+
+            # 2. Fetch REAL fees from trade history
+            fees_data = await self.get_real_fees_for_position(
+                symbol=trade.symbol,
+                entry_time=trade.opened_at if hasattr(trade, 'opened_at') else None,
+                exit_time=trade.closed_at if hasattr(trade, 'closed_at') else None,
+                entry_order_id=getattr(trade, 'entry_order_id', None)
+            )
+
+            entry_fee = fees_data['entry_fee']
+            exit_fee = fees_data['exit_fee']
+
+            # 3. Fetch REAL funding from income history
+            funding_data = await self.get_real_funding_for_position(
+                symbol=trade.symbol,
+                entry_time=trade.opened_at if hasattr(trade, 'opened_at') else None,
+                exit_time=trade.closed_at if hasattr(trade, 'closed_at') else None
+            )
+
+            funding_cost = funding_data['funding_cost']
+
+            # 4. Calculate Net P&L
+            # Note: funding_cost is already signed (negative = cost, positive = income)
+            net_pnl = gross_pnl - entry_fee - exit_fee + funding_cost
+
+            result = {
+                'gross_pnl': round(gross_pnl, 2),
+                'entry_fee': round(entry_fee, 4),
+                'exit_fee': round(exit_fee, 4),
+                'funding_cost': round(funding_cost, 4),
+                'net_pnl': round(net_pnl, 2),
+                'fee_breakdown': {
+                    'entry': {'fee': entry_fee, 'source': 'real'},
+                    'exit': {'fee': exit_fee, 'source': 'real'},
+                    'funding': {
+                        'total': funding_cost,
+                        'count': funding_data['funding_count'],
+                        'avg_rate': funding_data['avg_funding_rate'],
+                        'source': 'real'
+                    }
+                }
+            }
+
+            logger.debug(
+                f"{trade.symbol}: Net P&L = ${net_pnl:.2f} "
+                f"(gross: ${gross_pnl:.2f}, fees: ${entry_fee + exit_fee:.2f}, funding: ${funding_cost:.2f})"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error calculating net P&L with real fees: {e}")
+            return {
+                'gross_pnl': 0,
+                'entry_fee': 0,
+                'exit_fee': 0,
+                'funding_cost': 0,
+                'net_pnl': 0,
+                'error': str(e)
+            }
+
 
 # Singleton instance
 profit_optimizer = ProfitOptimizer()

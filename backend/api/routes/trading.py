@@ -4,7 +4,7 @@ Trading Routes - FIXED VERSION
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict
 import asyncio
 import json
 import os
@@ -15,7 +15,9 @@ from utils.binance_client import binance_client
 from modules.position_monitor import position_monitor
 from modules.autonomous_bot import autonomous_bot
 from modules.history_analyzer import history_analyzer # ✅ NOVO
+from modules.profit_optimizer import profit_optimizer
 from modules.risk_manager import risk_manager
+from utils.redis_client import redis_client
 from utils.telegram_notifier import telegram_notifier
 from api.models.trades import Trade
 from api.database import SessionLocal 
@@ -27,6 +29,30 @@ from sqlalchemy import func, case
 
 router = APIRouter()
 logger = setup_logger("trading_routes")
+
+
+async def _get_live_position(symbol: str) -> Dict[str, object]:
+    pos = await binance_client.get_position_risk(symbol)
+    if not pos:
+        raise HTTPException(status_code=404, detail=f"Posição {symbol} não encontrada na exchange")
+    try:
+        amt = float(pos.get("positionAmt", 0) or 0)
+    except Exception:
+        amt = 0.0
+    if abs(amt) <= 0:
+        raise HTTPException(status_code=404, detail=f"Posição {symbol} sem exposição")
+    try:
+        entry_price = float(pos.get("entryPrice", 0) or 0)
+    except Exception:
+        entry_price = 0.0
+    direction = "LONG" if amt > 0 else "SHORT"
+    quantity = abs(amt)
+    return {
+        "symbol": str(symbol).upper(),
+        "direction": direction,
+        "quantity": quantity,
+        "entry_price": entry_price
+    }
 
 
 def _to_native(obj):
@@ -705,35 +731,97 @@ async def get_daily_stats():
     db = SessionLocal()
     
     try:
-        from datetime import datetime, timedelta
-        
+        from datetime import datetime, timedelta, timezone
+
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        
+        today_start_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
         trades = db.query(Trade).filter(
             Trade.closed_at >= today_start,
             Trade.status == 'closed'
         ).all()
-        
-        if not trades:
-            balance_info = await binance_client.get_account_balance()
-            return {
-                "total_pnl": 0,
-                "trades_count": 0,
-                "win_rate": 0,
-                "best_trade": {},
-                "worst_trade": {},
-                "balance": balance_info.get('total_balance', 0) if balance_info else 0
-            }
-        
-        total_pnl = sum(t.pnl or 0 for t in trades)
-        winning_trades = [t for t in trades if (t.pnl or 0) > 0]
+
+        total_pnl = sum(t.pnl or 0 for t in trades) if trades else 0
+        winning_trades = [t for t in trades if (t.pnl or 0) > 0] if trades else []
         win_rate = (len(winning_trades) / len(trades)) * 100 if trades else 0
-        
-        best_trade = max(trades, key=lambda t: t.pnl or 0)
-        worst_trade = min(trades, key=lambda t: t.pnl or 0)
-        
+
+        best_trade = max(trades, key=lambda t: t.pnl or 0) if trades else None
+        worst_trade = min(trades, key=lambda t: t.pnl or 0) if trades else None
+
         balance_info = await binance_client.get_account_balance()
-        
+        total_balance = balance_info.get('total_balance', 0) if balance_info else 0
+        available_balance = balance_info.get('available_balance', 0) if balance_info else 0
+        daily_start_balance = None
+        intraday_peak_balance = None
+        intraday_trough_balance = None
+        wallet_change = None
+        wallet_change_pct = None
+        try:
+            date_key = today_start_utc.date().isoformat()
+            if redis_client and redis_client.client:
+                raw_start = redis_client.client.get(f"risk:daily_balance:{date_key}")
+                raw_peak = redis_client.client.get(f"risk:intraday_peak:{date_key}")
+                raw_trough = redis_client.client.get(f"risk:intraday_trough:{date_key}")
+                if raw_start is not None:
+                    daily_start_balance = float(raw_start)
+                if raw_peak is not None:
+                    intraday_peak_balance = float(raw_peak)
+                if raw_trough is not None:
+                    intraday_trough_balance = float(raw_trough)
+        except Exception:
+            pass
+
+        if daily_start_balance and total_balance:
+            wallet_change = total_balance - daily_start_balance
+            if daily_start_balance != 0:
+                wallet_change_pct = (wallet_change / daily_start_balance) * 100
+
+        unrealized_pnl = 0.0
+        if balance_info:
+            for p in balance_info.get("positions", []) or []:
+                try:
+                    unrealized_pnl += float(p.get("unRealizedProfit", p.get("unrealizedProfit", 0)) or 0)
+                except Exception:
+                    pass
+
+        realized_pnl = 0.0
+        commission = 0.0
+        funding = 0.0
+        try:
+            start_time = int(today_start_utc.timestamp() * 1000)
+            income_history = await asyncio.to_thread(
+                binance_client.client.futures_income_history,
+                startTime=start_time,
+                limit=1000
+            )
+            for item in income_history or []:
+                try:
+                    amount = float(item.get("income", 0) or 0)
+                except Exception:
+                    amount = 0.0
+                income_type = item.get("incomeType")
+                if income_type == "REALIZED_PNL":
+                    realized_pnl += amount
+                elif income_type == "COMMISSION":
+                    commission += amount
+                elif income_type == "FUNDING_FEE":
+                    funding += amount
+        except Exception:
+            pass
+
+        net_realized = realized_pnl + commission + funding
+        net_pnl = net_realized + unrealized_pnl
+
+        # Calculate DB-tracked fees and funding for comparison
+        db_fees_tracked = sum((t.entry_fee or 0) + (t.exit_fee or 0) for t in trades) if trades else 0
+        db_funding_tracked = sum(t.funding_cost or 0 for t in trades) if trades else 0
+        db_net_pnl = total_pnl - db_fees_tracked + db_funding_tracked
+
+        # Calculate divergence between DB and Exchange
+        realized_delta = abs(realized_pnl - total_pnl) if total_pnl != 0 else 0
+        fees_delta = abs(commission - db_fees_tracked) if db_fees_tracked != 0 else 0
+        divergence_warning = (realized_delta / abs(total_pnl) * 100) > 5.0 if total_pnl != 0 else False
+
         return {
             "total_pnl": total_pnl,
             "trades_count": len(trades),
@@ -741,16 +829,411 @@ async def get_daily_stats():
             "best_trade": {
                 "symbol": best_trade.symbol,
                 "pnl": best_trade.pnl or 0
-            },
+            } if best_trade else {},
             "worst_trade": {
                 "symbol": worst_trade.symbol,
                 "pnl": worst_trade.pnl or 0
+            } if worst_trade else {},
+            "balance": total_balance,
+            "db": {
+                "realized_pnl": total_pnl,
+                "fees_tracked": db_fees_tracked,
+                "funding_tracked": db_funding_tracked,
+                "net_pnl": db_net_pnl,
+                "trades_count": len(trades),
+                "win_rate": win_rate,
+                "best_trade": {
+                    "symbol": best_trade.symbol,
+                    "pnl": best_trade.pnl or 0
+                } if best_trade else {},
+                "worst_trade": {
+                    "symbol": worst_trade.symbol,
+                    "pnl": worst_trade.pnl or 0
+                } if worst_trade else {},
+                "day_start_local": today_start.isoformat()
             },
-            "balance": balance_info.get('total_balance', 0) if balance_info else 0
+            "exchange": {
+                "realized_pnl": realized_pnl,
+                "fees": commission,
+                "funding": funding,
+                "net_realized_pnl": net_realized,
+                "unrealized_pnl": unrealized_pnl,
+                "daily_net_pnl": net_pnl,
+                "total_wallet": total_balance,
+                "available_balance": available_balance,
+                "daily_start_balance": daily_start_balance,
+                "wallet_change": wallet_change,
+                "wallet_change_pct": wallet_change_pct,
+                "intraday_peak_balance": intraday_peak_balance,
+                "intraday_trough_balance": intraday_trough_balance,
+                "day_start_utc": today_start_utc.isoformat()
+            },
+            "divergence": {
+                "realized_delta": round(realized_delta, 2),
+                "fees_delta": round(fees_delta, 2),
+                "warning": divergence_warning,
+                "message": "DB and Exchange PnL diverge by >5%" if divergence_warning else "PnL in sync"
+            }
         }
     
     finally:
         db.close()
+
+
+@router.get("/stats/cumulative-pnl")
+async def get_cumulative_pnl(days: int = 30):
+    """
+    Retorna progressão cumulativa de P&L usando income history da exchange.
+
+    Args:
+        days: Número de dias para retornar (default: 30)
+
+    Returns:
+        {
+            "series": [
+                {
+                    "date": "2026-01-08",
+                    "net_pnl": 123.45,
+                    "cumulative": 456.78,
+                    "realized": 100.00,
+                    "fees": -5.50,
+                    "funding": -2.05
+                },
+                ...
+            ]
+        }
+    """
+    try:
+        from collections import defaultdict
+        from datetime import datetime, timedelta
+
+        # Fetch income history from Binance
+        income_history = await binance_client.get_income_history(limit=1000)
+
+        if not income_history:
+            logger.warning("No income history available from exchange")
+            return {"series": []}
+
+        # Group by day
+        by_day = defaultdict(lambda: {"realized": 0.0, "fees": 0.0, "funding": 0.0})
+
+        for entry in income_history:
+            try:
+                # Parse timestamp (Binance returns milliseconds)
+                timestamp_ms = entry.get('time', 0)
+                day = datetime.fromtimestamp(timestamp_ms / 1000).strftime('%Y-%m-%d')
+
+                income_amount = float(entry.get('income', 0) or 0)
+                income_type = entry.get('incomeType', '')
+
+                if income_type == 'REALIZED_PNL':
+                    by_day[day]['realized'] += income_amount
+                elif income_type == 'COMMISSION':
+                    by_day[day]['fees'] += income_amount  # Fees are negative
+                elif income_type == 'FUNDING_FEE':
+                    by_day[day]['funding'] += income_amount  # Can be positive or negative
+
+            except Exception as e:
+                logger.debug(f"Error processing income entry: {e}")
+                continue
+
+        # Calculate cumulative and build series
+        cumulative = 0.0
+        series = []
+
+        # Sort days chronologically and take last N days
+        sorted_days = sorted(by_day.keys())[-days:]
+
+        for day in sorted_days:
+            net_pnl = by_day[day]['realized'] + by_day[day]['fees'] + by_day[day]['funding']
+            cumulative += net_pnl
+
+            series.append({
+                "date": day,
+                "net_pnl": round(net_pnl, 2),
+                "cumulative": round(cumulative, 2),
+                "realized": round(by_day[day]['realized'], 2),
+                "fees": round(by_day[day]['fees'], 2),
+                "funding": round(by_day[day]['funding'], 2)
+            })
+
+        logger.info(f"Returning cumulative PnL for {len(series)} days (cumulative: ${cumulative:.2f})")
+
+        return {"series": series}
+
+    except Exception as e:
+        logger.error(f"Error fetching cumulative PnL: {e}")
+        return {"series": [], "error": str(e)}
+
+
+@router.post("/positions/close-exchange")
+async def close_position_exchange(symbol: str):
+    """Fecha posição na exchange (independente do DB)."""
+    db = SessionLocal()
+    try:
+        pos = await _get_live_position(symbol)
+        result = await order_executor.close_position(
+            symbol=pos["symbol"],
+            quantity=pos["quantity"],
+            direction=pos["direction"]
+        )
+
+        if not result.get("success"):
+            return {
+                "success": False,
+                "message": result.get("reason", "Falha ao fechar posição")
+            }
+
+        close_price = float(result.get("avg_price", 0) or 0)
+        trade = db.query(Trade).filter(
+            Trade.symbol == pos["symbol"],
+            Trade.status == 'open'
+        ).order_by(Trade.opened_at.desc()).first()
+
+        if trade:
+            if close_price <= 0:
+                close_price = float(trade.current_price or trade.entry_price or 0)
+            if trade.direction == 'LONG':
+                pnl = (close_price - trade.entry_price) * trade.quantity
+            else:
+                pnl = (trade.entry_price - close_price) * trade.quantity
+
+            trade.status = 'closed'
+            trade.exit_price = close_price
+            trade.pnl = pnl
+            trade.pnl_percentage = (pnl / (trade.entry_price * trade.quantity)) * 100 if trade.entry_price and trade.quantity else 0.0
+            trade.exit_time = datetime.now()
+            trade.closed_at = datetime.now()
+            db.commit()
+
+        return {
+            "success": True,
+            "message": f"Posição {pos['symbol']} fechada na exchange",
+            "close_price": close_price
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao fechar posição: {e}")
+    finally:
+        db.close()
+
+
+@router.post("/positions/stop-loss")
+async def set_position_stop_loss(symbol: str, stop_price: Optional[float] = None, stop_pct: Optional[float] = None):
+    """Configura stop loss da posição (percentual ou preço)."""
+    pos = await _get_live_position(symbol)
+    if stop_price is None:
+        if stop_pct is None:
+            raise HTTPException(status_code=400, detail="stop_price ou stop_pct é obrigatório")
+        if pos["entry_price"] <= 0:
+            raise HTTPException(status_code=400, detail="entry_price inválido para calcular stop_pct")
+        pct = abs(float(stop_pct))
+        if pos["direction"] == "LONG":
+            stop_price = pos["entry_price"] * (1 - pct / 100.0)
+        else:
+            stop_price = pos["entry_price"] * (1 + pct / 100.0)
+
+    symbol_info = await binance_client.get_symbol_info(pos["symbol"])
+    if not symbol_info:
+        raise HTTPException(status_code=500, detail="symbol_info indisponível")
+
+    position_side = None
+    try:
+        position_side = await binance_client.get_position_side(pos["direction"])
+    except Exception:
+        position_side = None
+
+    res = await order_executor._set_stop_loss(
+        symbol=pos["symbol"],
+        direction=pos["direction"],
+        quantity=pos["quantity"],
+        stop_price=float(stop_price),
+        symbol_info=symbol_info,
+        position_side=position_side
+    )
+    return {"success": res.get("success"), "stop_price": float(stop_price), "result": res}
+
+
+@router.post("/positions/take-profit")
+async def set_position_take_profit(symbol: str, take_profit_price: Optional[float] = None, take_profit_pct: Optional[float] = None):
+    """Configura take profit da posição (percentual ou preço)."""
+    pos = await _get_live_position(symbol)
+    if take_profit_price is None:
+        if take_profit_pct is None:
+            raise HTTPException(status_code=400, detail="take_profit_price ou take_profit_pct é obrigatório")
+        if pos["entry_price"] <= 0:
+            raise HTTPException(status_code=400, detail="entry_price inválido para calcular take_profit_pct")
+        pct = abs(float(take_profit_pct))
+        if pos["direction"] == "LONG":
+            take_profit_price = pos["entry_price"] * (1 + pct / 100.0)
+        else:
+            take_profit_price = pos["entry_price"] * (1 - pct / 100.0)
+
+    symbol_info = await binance_client.get_symbol_info(pos["symbol"])
+    if not symbol_info:
+        raise HTTPException(status_code=500, detail="symbol_info indisponível")
+
+    position_side = None
+    try:
+        position_side = await binance_client.get_position_side(pos["direction"])
+    except Exception:
+        position_side = None
+
+    res = await order_executor._set_take_profit_limit(
+        symbol=pos["symbol"],
+        direction=pos["direction"],
+        quantity=pos["quantity"],
+        take_profit=float(take_profit_price),
+        symbol_info=symbol_info,
+        position_side=position_side
+    )
+    return {"success": res.get("success"), "take_profit_price": float(take_profit_price), "result": res}
+
+
+@router.post("/positions/breakeven")
+async def set_position_breakeven(symbol: str):
+    """Move stop para breakeven (considerando fees quando houver trade no DB)."""
+    db = SessionLocal()
+    try:
+        pos = await _get_live_position(symbol)
+        trade = db.query(Trade).filter(
+            Trade.symbol == pos["symbol"],
+            Trade.status == 'open'
+        ).order_by(Trade.opened_at.desc()).first()
+
+        if trade:
+            breakeven = await profit_optimizer.calculate_breakeven_price(trade)
+        else:
+            breakeven = pos["entry_price"]
+
+        symbol_info = await binance_client.get_symbol_info(pos["symbol"])
+        if not symbol_info:
+            raise HTTPException(status_code=500, detail="symbol_info indisponível")
+
+        position_side = None
+        try:
+            position_side = await binance_client.get_position_side(pos["direction"])
+        except Exception:
+            position_side = None
+
+        res = await order_executor._set_stop_loss(
+            symbol=pos["symbol"],
+            direction=pos["direction"],
+            quantity=pos["quantity"],
+            stop_price=float(breakeven),
+            symbol_info=symbol_info,
+            position_side=position_side
+        )
+
+        if trade and res.get("success"):
+            trade.breakeven_price = breakeven
+            trade.breakeven_stop_activated = True
+            db.commit()
+
+        return {"success": res.get("success"), "breakeven_price": float(breakeven), "result": res}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao configurar breakeven: {e}")
+    finally:
+        db.close()
+
+
+@router.post("/positions/trailing-stop")
+async def set_position_trailing_stop(symbol: str):
+    """Configura trailing stop automático para a posição."""
+    pos = await _get_live_position(symbol)
+    symbol_info = await binance_client.get_symbol_info(pos["symbol"])
+    if not symbol_info:
+        raise HTTPException(status_code=500, detail="symbol_info indisponível")
+
+    entry_price = pos["entry_price"]
+    if entry_price <= 0:
+        try:
+            entry_price = float(await binance_client.get_symbol_price(pos["symbol"]) or 0)
+        except Exception:
+            entry_price = 0.0
+
+    position_side = None
+    try:
+        position_side = await binance_client.get_position_side(pos["direction"])
+    except Exception:
+        position_side = None
+
+    res = await order_executor._set_trailing_stop(
+        symbol=pos["symbol"],
+        direction=pos["direction"],
+        quantity=pos["quantity"],
+        entry_price=float(entry_price),
+        symbol_info=symbol_info,
+        position_side=position_side
+    )
+    return {"success": res.get("success"), "result": res}
+
+
+@router.get("/stats/realized-daily")
+async def get_realized_daily(days: int = 7):
+    """Retorna PnL realizado diário (Binance, incluindo fees e funding)."""
+    try:
+        try:
+            days = int(days)
+        except Exception:
+            days = 7
+        days = max(1, min(30, days))
+
+        from datetime import datetime, timedelta, timezone
+
+        today = datetime.now(timezone.utc).date()
+        start_date = today - timedelta(days=days - 1)
+        start_time = int(datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc).timestamp() * 1000)
+
+        income_history = await asyncio.to_thread(
+            binance_client.client.futures_income_history,
+            startTime=start_time,
+            limit=1000
+        )
+
+        by_day: Dict[str, Dict[str, float]] = {}
+        for item in income_history or []:
+            ts = item.get("time") or item.get("timestamp") or item.get("tranTime")
+            if not ts:
+                continue
+            try:
+                day_key = datetime.fromtimestamp(int(ts) / 1000, tz=timezone.utc).date().isoformat()
+            except Exception:
+                continue
+
+            rec = by_day.setdefault(day_key, {"realized_pnl": 0.0, "fees": 0.0, "funding": 0.0})
+            try:
+                amount = float(item.get("income", 0) or 0)
+            except Exception:
+                amount = 0.0
+
+            income_type = item.get("incomeType")
+            if income_type == "REALIZED_PNL":
+                rec["realized_pnl"] += amount
+            elif income_type == "COMMISSION":
+                rec["fees"] += amount
+            elif income_type == "FUNDING_FEE":
+                rec["funding"] += amount
+
+        series = []
+        d = start_date
+        while d <= today:
+            key = d.isoformat()
+            rec = by_day.get(key, {"realized_pnl": 0.0, "fees": 0.0, "funding": 0.0})
+            net_pnl = rec["realized_pnl"] + rec["fees"] + rec["funding"]
+            series.append({
+                "date": key,
+                "realized_pnl": rec["realized_pnl"],
+                "fees": rec["fees"],
+                "funding": rec["funding"],
+                "net_pnl": net_pnl
+            })
+            d += timedelta(days=1)
+
+        return {"days": days, "series": series}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar PnL diário: {e}")
 
 
 @router.post("/report/daily")

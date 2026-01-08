@@ -610,7 +610,34 @@ class BinanceClientManager:
         if self.testnet:
             return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
         try:
-            rows = await self._retry_call(self.client.futures_taker_long_short_ratio, symbol=symbol, period=period, limit=limit, attempts=2, base_sleep=0.5)
+            if hasattr(self.client, "futures_taker_long_short_ratio"):
+                rows = await self._retry_call(
+                    self.client.futures_taker_long_short_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            elif hasattr(self.client, "futures_takerlongshort_ratio"):
+                rows = await self._retry_call(
+                    self.client.futures_takerlongshort_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            elif hasattr(self.client, "_request_futures_data_api"):
+                def _fetch():
+                    return self.client._request_futures_data_api(
+                        "get",
+                        "takerlongshortRatio",
+                        data={"symbol": symbol, "period": period, "limit": limit},
+                    )
+                rows = await self._retry_call(_fetch, attempts=2, base_sleep=0.5)
+            else:
+                raise AttributeError("futures taker ratio method unavailable")
             if not rows:
                 return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
             last = rows[-1]
@@ -953,6 +980,94 @@ class BinanceClientManager:
         except Exception as e:
             logger.warning(f"get_commission_rate({symbol}) falhou: {e}")
             return {}
+
+    async def get_account_trades(self, symbol: Optional[str] = None, limit: int = 1000) -> List[Dict]:
+        """
+        Retorna histórico de trades da conta (com comissões reais).
+        Endpoint: GET /fapi/v1/userTrades
+
+        Cache: 5 min por símbolo, evita rate limits
+
+        Returns:
+            List of trades: [{ symbol, id, orderId, price, qty, commission, commissionAsset, time, ... }]
+        """
+        # Build cache key based on parameters
+        if symbol:
+            cache_key = f"binance:trades:{symbol}"
+        else:
+            cache_key = "binance:trades:all"
+
+        async def _fetch():
+            try:
+                params = {"limit": limit}
+                if symbol:
+                    params["symbol"] = symbol
+
+                trades = await self._retry_call(self.client.futures_account_trades, **params)
+                logger.debug(f"Fetched {len(trades)} account trades{f' for {symbol}' if symbol else ''}")
+                return trades
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter trades da conta (após retries): {e}")
+                return []
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter trades: {e}")
+                return []
+
+        # Cache for 5 minutes
+        return await self._cached_call(cache_key, ttl=300, fetch_fn=_fetch)
+
+    async def get_income_history(
+        self,
+        symbol: Optional[str] = None,
+        income_type: Optional[str] = None,
+        limit: int = 1000
+    ) -> List[Dict]:
+        """
+        Retorna histórico de income (fees, funding, realized PnL).
+        Endpoint: GET /fapi/v1/income
+
+        Args:
+            symbol: Filter by symbol (optional)
+            income_type: TRANSFER, FUNDING_FEE, REALIZED_PNL, COMMISSION, etc. (optional)
+            limit: Max records to fetch (default 1000)
+
+        Cache: 5 min, evita rate limits
+
+        Returns:
+            List of income records: [{ symbol, incomeType, income, asset, time, ... }]
+        """
+        # Build cache key
+        cache_parts = ["binance:income"]
+        if symbol:
+            cache_parts.append(symbol)
+        if income_type:
+            cache_parts.append(income_type)
+        cache_key = ":".join(cache_parts)
+
+        async def _fetch():
+            try:
+                params = {"limit": limit}
+                if symbol:
+                    params["symbol"] = symbol
+                if income_type:
+                    params["incomeType"] = income_type
+
+                income = await self._retry_call(self.client.futures_income_history, **params)
+                logger.debug(
+                    f"Fetched {len(income)} income records"
+                    f"{f' for {symbol}' if symbol else ''}"
+                    f"{f' type={income_type}' if income_type else ''}"
+                )
+                return income
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter income history (após retries): {e}")
+                return []
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter income: {e}")
+                return []
+
+        # Cache for 5 minutes
+        return await self._cached_call(cache_key, ttl=300, fetch_fn=_fetch)
 
 # Instância global
 binance_client = BinanceClientManager()

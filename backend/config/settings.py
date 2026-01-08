@@ -30,9 +30,10 @@ class Settings(BaseSettings):
     # ============================================
     # BOT SETTINGS - OTIMIZADO PARA RECUPERAÇÃO (CONSERVADOR)
     # ============================================
-    MAX_POSITIONS: int = 3  # Limite para 3 posições (validação de features)
+    MAX_POSITIONS: int = 4  # Limite para 4 posições
     RISK_PER_TRADE: float = 0.025  # 2.5% por trade (era 10%)
     MAX_PORTFOLIO_RISK: float = 0.15  # 15% máximo em risco
+    MAX_TOTAL_CAPITAL_USAGE: float = 0.90  # Fraction of total capital available
     DEFAULT_LEVERAGE: int = 10  # 10x padrão (reduz margem requerida 50%)
     # Risco e spread (afinamento fino)
     SNIPER_RISK_PER_TRADE: float = 0.02  # 2% por sniper
@@ -84,7 +85,9 @@ class Settings(BaseSettings):
     MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Liquidez mínima 24h reduzida para 500k (Ultra Aggressive)
     SCANNER_CONCURRENCY: int = 8                 # Paralelismo sugerido para chamadas de klines/validações
     SYMBOL_WHITELIST: list[str] = [              # Whitelist principal (prod/testnet)
-        "HYPERUSDT", "TURBOUSDT", "BANANAUSDT"
+        "HYPERUSDT", "TURBOUSDT", "BANANAUSDT",
+        "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+        "PENDLEUSDT", "TAOUSDT", "SUIUSDT", "FETUSDT", "LINKUSDT"
     ]
     TESTNET_WHITELIST: list[str] = [             # Whitelist padrão para TESTNET
         "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
@@ -145,7 +148,7 @@ class Settings(BaseSettings):
     AUTOSTART_BOT: bool = False
     BOT_DRY_RUN: bool = True
     BOT_MIN_SCORE: int = 70  # Alta qualidade apenas (era 55)
-    BOT_MAX_POSITIONS: int = 2  # Apenas 2 posições
+    BOT_MAX_POSITIONS: int = 4  # Até 4 posições
     BOT_SCAN_INTERVAL_MINUTES: int = 1
 
     # Positions Sync
@@ -215,6 +218,7 @@ class Settings(BaseSettings):
     TRACK_FEES_PER_TRADE: bool = True
     ESTIMATE_TAKER_FEE: float = 0.0005  # 0.05% Binance taker default
     ESTIMATE_MAKER_FEE: float = 0.0002  # 0.02% Binance maker default
+    USE_REAL_FEES_FROM_API: bool = True  # Fetch real fees from Binance API (every 5 min)
 
     # Breakeven Stop
     ENABLE_BREAKEVEN_STOP: bool = True

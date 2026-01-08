@@ -216,22 +216,58 @@ class PositionMonitor:
                             if getattr(self.settings, "TRACK_FEES_PER_TRADE", True):
                                 try:
                                     from modules.profit_optimizer import profit_optimizer
+                                    from datetime import datetime, timedelta
 
-                                    # Calculate net P&L including fees
-                                    net_pnl_data = await profit_optimizer.calculate_net_pnl(
-                                        trade,
-                                        current_price,
-                                        entry_was_maker=getattr(trade, 'is_maker_entry', False),
-                                        exit_is_maker=False  # Assume taker for exit estimate
-                                    )
+                                    # Check if we should refresh with REAL fees (every 5 minutes)
+                                    should_refresh_real_fees = False
+                                    last_fee_refresh = getattr(trade, 'last_fee_refresh_at', None)
 
-                                    trade.entry_fee = net_pnl_data.get('entry_fee', 0.0)
-                                    trade.exit_fee = net_pnl_data.get('exit_fee', 0.0)
-                                    trade.funding_cost = net_pnl_data.get('funding_cost', 0.0)
-                                    trade.net_pnl = net_pnl_data.get('net_pnl', 0.0)
+                                    if not last_fee_refresh:
+                                        should_refresh_real_fees = True
+                                    elif datetime.now() - last_fee_refresh > timedelta(minutes=5):
+                                        should_refresh_real_fees = True
+
+                                    if should_refresh_real_fees and getattr(self.settings, "USE_REAL_FEES_FROM_API", True):
+                                        # Use REAL fees from Binance API (Phase 2 enhancement)
+                                        logger.debug(f"Refreshing REAL fees for {trade.symbol}")
+                                        net_pnl_data = await profit_optimizer.calculate_net_pnl_with_real_fees(trade)
+
+                                        trade.entry_fee = net_pnl_data.get('entry_fee', 0.0)
+                                        trade.exit_fee = net_pnl_data.get('exit_fee', 0.0)
+                                        trade.funding_cost = net_pnl_data.get('funding_cost', 0.0)
+                                        trade.net_pnl = net_pnl_data.get('net_pnl', 0.0)
+
+                                        # Track last refresh time
+                                        if not hasattr(trade, 'last_fee_refresh_at'):
+                                            # Add column if doesn't exist (backward compatibility)
+                                            try:
+                                                trade.last_fee_refresh_at = datetime.now()
+                                            except Exception:
+                                                pass
+                                        else:
+                                            trade.last_fee_refresh_at = datetime.now()
+
+                                        logger.info(
+                                            f"✅ {trade.symbol}: Real fees updated - "
+                                            f"Entry: ${trade.entry_fee:.4f}, Funding: ${trade.funding_cost:.4f}, "
+                                            f"Net P&L: ${trade.net_pnl:.2f}"
+                                        )
+                                    else:
+                                        # Use estimated fees (faster, for every tick)
+                                        net_pnl_data = await profit_optimizer.calculate_net_pnl(
+                                            trade,
+                                            current_price,
+                                            entry_was_maker=getattr(trade, 'is_maker_entry', False),
+                                            exit_is_maker=False  # Assume taker for exit estimate
+                                        )
+
+                                        trade.entry_fee = net_pnl_data.get('entry_fee', 0.0)
+                                        trade.exit_fee = net_pnl_data.get('exit_fee', 0.0)
+                                        trade.funding_cost = net_pnl_data.get('funding_cost', 0.0)
+                                        trade.net_pnl = net_pnl_data.get('net_pnl', 0.0)
 
                                     # Log if fee impact is significant
-                                    fee_impact = net_pnl_data.get('fee_impact_pct', 0.0)
+                                    fee_impact = net_pnl_data.get('fee_impact_pct', 0.0) if 'fee_impact_pct' in net_pnl_data else 0.0
                                     if fee_impact > 5:
                                         logger.warning(
                                             f"⚠️ {trade.symbol}: High fee impact {fee_impact:.1f}% "
