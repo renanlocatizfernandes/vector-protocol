@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from models.database import engine, Base, SessionLocal
-from api.models import trades
-from api.routes import positions, config, market, trading, system
+from api.models import trades, trading_rules
+from api.routes import positions, config, market, trading, system, rules
 from api import backtesting, websocket
 from utils.logger import setup_logger
 from config.settings import get_settings
@@ -115,9 +115,10 @@ async def lifespan(app: FastAPI):
                 pass
             try:
                 # Forçando max_positions para 15 para depuração
-                autonomous_bot.max_positions = 15
+                max_positions = int(getattr(settings, "BOT_MAX_POSITIONS", getattr(settings, "MAX_POSITIONS", 15)))
+                autonomous_bot.max_positions = max_positions
                 if hasattr(autonomous_bot, "base_max_positions"):
-                    autonomous_bot.base_max_positions = 15
+                    autonomous_bot.base_max_positions = max_positions
             except Exception:
                 pass
 
@@ -253,6 +254,8 @@ app.include_router(trading.router, prefix="/api/trading", tags=["Trading"])
 app.include_router(backtesting.router, prefix="/api/backtest", tags=["Backtesting"])
 # ✅ System: logs e status docker
 app.include_router(system.router, prefix="/api/system", tags=["System"])
+# ✅ Rules: Trading rules management (Phase 3)
+app.include_router(rules.router, tags=["Rules"])
 
 
 @app.get("/", tags=["Health"])

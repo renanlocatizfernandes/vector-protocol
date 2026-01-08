@@ -241,6 +241,12 @@ class Settings(BaseSettings):
     ENABLE_MARKET_INTELLIGENCE: bool = True  # Master switch for all MI features
     ENABLE_PROFIT_OPTIMIZER: bool = True      # Master switch for profit optimization
 
+    # ========================================
+    # TRADING RULES - Phase 3
+    # ========================================
+
+    ENABLE_DB_RULES: bool = False  # Use database-based trading rules (whitelist, sniper, risk)
+
     class Config:
         # ✅ CORRIGIR: Detectar automaticamente o ambiente
         # Tenta achar .env no root do repo
