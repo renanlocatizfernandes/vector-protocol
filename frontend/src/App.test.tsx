@@ -23,8 +23,8 @@ describe("App", () => {
       </BrowserRouter>
     );
 
-    // Navbar e links
-    expect(screen.getByText(/Antigravity/i)).toBeInTheDocument();
+    // Navbar e links - verifica que o logo Vector está presente
+    expect(screen.getByText("Protocol Console")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Dashboard/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Configuration/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Supervisor/i })).toBeInTheDocument();
