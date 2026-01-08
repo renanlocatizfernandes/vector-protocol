@@ -3,6 +3,8 @@ import { ManualTrade } from '../components/ManualTrade';
 import { PerformanceChart } from '../components/PerformanceChart';
 import { BotStatus } from '../components/BotStatus';
 import { PositionsTable } from '../components/PositionsTable'; // Keeping existing for now, will refactor later
+import { RealizedPnlChart } from '../components/RealizedPnlChart';
+import { HealthDashboard } from '../components/HealthDashboard';
 
 export const Dashboard: React.FC = () => {
   return (
@@ -30,11 +32,25 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Manual Trade Section */}
+      {/* Manual Trade + Realized PnL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
         <div className="lg:col-span-1">
           <ManualTrade />
         </div>
+        <div className="lg:col-span-2 min-h-[260px]">
+          <RealizedPnlChart />
+        </div>
+      </div>
+
+      {/* Health Dashboard */}
+      <div className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
+        <div className="flex items-center gap-3 mb-4 pl-1">
+          <div className="w-1 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(42,212,198,0.35)]" />
+          <h2 className="text-xl font-semibold text-white">
+            System Health
+          </h2>
+        </div>
+        <HealthDashboard />
       </div>
 
       {/* Bottom: Positions */}
