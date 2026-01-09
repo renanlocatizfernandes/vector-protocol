@@ -79,6 +79,35 @@ class AutonomousBot:
             return True
         return str(symbol).upper() in wl
 
+    def _allows_position_management(self, symbol: str, trade=None) -> bool:
+        """
+        PROFESSIONAL POSITION MANAGEMENT LOGIC:
+
+        - ENTRY whitelist: Blocks NEW positions in non-whitelisted symbols
+        - ACTION whitelist: Allows ACTIVE MANAGEMENT of existing positions
+
+        This enables professional strategies like:
+        - DCA (Dollar Cost Averaging) to reduce entry price on losing positions
+        - Pyramiding to add to winning positions
+        - Trailing stops and time exits on any open position
+
+        Returns True if position management is allowed (either in whitelist OR has open position)
+        """
+        # Always allow if in entry whitelist
+        if self._whitelist_allows(symbol):
+            return True
+
+        # CRITICAL: For positions already open (passed as trade object),
+        # ALWAYS allow management even if symbol removed from entry whitelist
+        if trade is not None:
+            # Trade object passed = we're managing an existing position
+            logger.debug(f"✅ Position management ALLOWED for {symbol} - existing position")
+            return True
+
+        # No trade object = check if there's any open position for this symbol
+        # (This shouldn't happen in practice, but safety check)
+        return False
+
     def _log_whitelist_block(self, symbol: str, action: str) -> None:
         now = time.time()
         key = f"wl_{action}_{symbol}"
@@ -171,7 +200,8 @@ class AutonomousBot:
                     for trade in open_trades:
                         if hasattr(trade, 'pyramided') and trade.pyramided:
                             continue
-                        if not self._whitelist_allows(trade.symbol):
+                        # ✅ PROFESSIONAL: Allow pyramiding on existing positions even if symbol removed from entry whitelist
+                        if not self._allows_position_management(trade.symbol, trade):
                             self._log_whitelist_block(trade.symbol, "pyramiding")
                             continue
                         
@@ -293,7 +323,8 @@ class AutonomousBot:
                 try:
                     open_trades = db.query(Trade).filter(Trade.status == 'open').all()
                     for trade in open_trades:
-                        if not self._whitelist_allows(trade.symbol):
+                        # ✅ PROFESSIONAL: Allow DCA on existing positions even if symbol removed from entry whitelist
+                        if not self._allows_position_management(trade.symbol, trade):
                             self._log_whitelist_block(trade.symbol, "dca")
                             continue
                         if trade.pnl_percentage > dca_threshold_pct:
@@ -428,7 +459,8 @@ class AutonomousBot:
                     now = datetime.now(timezone.utc)
                     
                     for trade in open_trades:
-                        if not self._whitelist_allows(trade.symbol):
+                        # ✅ PROFESSIONAL: Allow time exit on existing positions even if symbol removed from entry whitelist
+                        if not self._allows_position_management(trade.symbol, trade):
                             self._log_whitelist_block(trade.symbol, "time_exit")
                             continue
                         entry_time = trade.opened_at

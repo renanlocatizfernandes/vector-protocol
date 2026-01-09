@@ -1363,8 +1363,45 @@ class PositionMonitor:
         return str(symbol).upper() in wl
 
     def _skip_action_if_not_whitelisted(self, symbol: str, action: str) -> bool:
+        """
+        Whitelist logic with intelligent position management:
+
+        - ENTRY whitelist: Blocks NEW positions in non-whitelisted symbols
+        - ACTION whitelist: Allows ACTIVE MANAGEMENT of existing positions
+
+        This allows professional position management (DCA, pyramiding, trailing stop)
+        on positions already open, even if symbol is removed from entry whitelist.
+        """
+        # Always allow if in entry whitelist
         if self._whitelist_allows(symbol):
             return False
+
+        # CRITICAL: Allow active management of EXISTING positions
+        # Check if there's an open position for this symbol
+        try:
+            from models.database import SessionLocal
+            from api.models.trades import Trade
+
+            db = SessionLocal()
+            has_open_position = db.query(Trade).filter(
+                Trade.symbol == symbol,
+                Trade.status == 'open'
+            ).first() is not None
+            db.close()
+
+            if has_open_position:
+                # Symbol not in entry whitelist BUT has open position
+                # ALLOW active management (DCA, pyramiding, trailing, etc)
+                self._log_once(
+                    f"wl_allow_mgmt_{action}_{symbol}",
+                    f"✅ Position management ALLOWED for {symbol} (action: {action}) - existing position"
+                )
+                return False  # Do NOT skip action
+
+        except Exception as e:
+            logger.debug(f"Error checking open position for {symbol}: {e}")
+
+        # Symbol not in whitelist AND no open position = BLOCK action
         self._log_once(f"wl_block_{action}_{symbol}", f"Whitelist block: {symbol} action {action} skipped")
         return True
 
