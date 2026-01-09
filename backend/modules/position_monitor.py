@@ -1167,9 +1167,11 @@ class PositionMonitor:
                         "symbol": trade.symbol,
                         "side": side,
                         "type": "MARKET",
-                        "quantity": current_chunk,
-                        "reduceOnly": True
+                        "quantity": current_chunk
                     }
+                    # ✅ FIX: Don't send reduceOnly in One-Way mode (system default)
+                    # In One-Way mode, closing orders are automatically detected by direction
+                    # reduceOnly parameter causes API error -1106 in One-Way mode
                     if position_side:
                         order_params["positionSide"] = position_side
                     order = await asyncio.to_thread(

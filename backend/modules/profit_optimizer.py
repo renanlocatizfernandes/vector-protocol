@@ -211,14 +211,27 @@ class ProfitOptimizer:
             total_fees = entry_fee + exit_fee + funding_cost
             fee_per_unit = total_fees / quantity if quantity > 0 else 0
 
+            logger.info(
+                f"🔍 {trade.symbol} BREAKEVEN CALC DEBUG:\n"
+                f"  Direction: {direction}\n"
+                f"  Entry Price: {entry_price}\n"
+                f"  Quantity: {quantity}\n"
+                f"  Entry Notional: {entry_notional}\n"
+                f"  Entry Fee: {entry_fee}\n"
+                f"  Exit Fee: {exit_fee}\n"
+                f"  Funding Cost: {funding_cost}\n"
+                f"  Total Fees: {total_fees}\n"
+                f"  Fee Per Unit: {fee_per_unit}"
+            )
+
             if direction == 'LONG':
                 breakeven = entry_price + fee_per_unit
             else:  # SHORT
                 breakeven = entry_price - fee_per_unit
 
-            logger.debug(
-                f"{trade.symbol}: Breakeven Price {breakeven:.4f} "
-                f"(Entry {entry_price:.4f} + Fees {fee_per_unit:.4f})"
+            logger.info(
+                f"✅ {trade.symbol}: Breakeven Price {breakeven:.4f} "
+                f"(Entry {entry_price:.4f}, Dir: {direction})"
             )
 
             return round(breakeven, 8)  # Maximum precision for crypto

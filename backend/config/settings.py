@@ -85,9 +85,11 @@ class Settings(BaseSettings):
     MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Liquidez mínima 24h reduzida para 500k (Ultra Aggressive)
     SCANNER_CONCURRENCY: int = 8                 # Paralelismo sugerido para chamadas de klines/validações
     SYMBOL_WHITELIST: list[str] = [              # Whitelist principal (prod/testnet)
-        "HYPERUSDT", "TURBOUSDT", "BANANAUSDT",
+        # ❌ REMOVED: "HYPERUSDT", "TURBOUSDT", "BANANAUSDT" - Massive losses (77% loss rate, -8k USDT)
         "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
-        "PENDLEUSDT", "TAOUSDT", "SUIUSDT", "FETUSDT", "LINKUSDT"
+        "PENDLEUSDT", "TAOUSDT", "SUIUSDT", "FETUSDT", "LINKUSDT",
+        # ✅ PROVEN WINNERS (100% win rate):
+        "TRXUSDT", "JSTUSDT", "RENDERUSDT", "1000PEPEUSDT", "1000BONKUSDT", "STXUSDT"
     ]
     TESTNET_WHITELIST: list[str] = [             # Whitelist padrão para TESTNET
         "BTCUSDT","ETHUSDT","BNBUSDT","XRPUSDT","ADAUSDT",
