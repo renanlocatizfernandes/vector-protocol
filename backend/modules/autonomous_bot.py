@@ -95,17 +95,19 @@ class AutonomousBot:
         """
         # Always allow if in entry whitelist
         if self._whitelist_allows(symbol):
+            logger.info(f"✅ {symbol} - ALLOWED (in entry whitelist)")
             return True
 
         # CRITICAL: For positions already open (passed as trade object),
         # ALWAYS allow management even if symbol removed from entry whitelist
         if trade is not None:
             # Trade object passed = we're managing an existing position
-            logger.debug(f"✅ Position management ALLOWED for {symbol} - existing position")
+            logger.info(f"✅ {symbol} - Position management ALLOWED (existing position, id={trade.id})")
             return True
 
         # No trade object = check if there's any open position for this symbol
         # (This shouldn't happen in practice, but safety check)
+        logger.warning(f"❌ {symbol} - Position management BLOCKED (not in whitelist, no trade object)")
         return False
 
     def _log_whitelist_block(self, symbol: str, action: str) -> None:

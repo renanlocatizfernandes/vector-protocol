@@ -41,7 +41,7 @@ services:
       dockerfile: Dockerfile
     container_name: trading-bot-api
     env_file:
-      - .env  # CONTA REAL - mudado de .env.docker
+      - .env
     ports:
       - "${API_PORT_HOST:-8001}:8000"
     volumes:

@@ -10,6 +10,7 @@ import asyncio
 from typing import Dict, List
 from utils.binance_client import binance_client
 from utils.logger import setup_logger
+from config.settings import get_settings
 
 logger = setup_logger("risk_calculator")
 
@@ -25,7 +26,14 @@ class RiskCalculator:
         self.pyramiding_reserve = 0.10  # 10% reserva = ~7 USDT
         
         # Limite global de capital
-        self.max_total_capital_usage = 0.90  # 90% máximo em uso
+        self.max_total_capital_usage = 0.90
+        try:
+            self.max_total_capital_usage = float(
+                getattr(get_settings(), "MAX_TOTAL_CAPITAL_USAGE", self.max_total_capital_usage)
+            )
+        except Exception:
+            pass
+        self.max_total_capital_usage = max(0.0, min(1.0, self.max_total_capital_usage))
         
         # 🎯 STOP LOSS DINÂMICO
         # Base 10% com ajustes:

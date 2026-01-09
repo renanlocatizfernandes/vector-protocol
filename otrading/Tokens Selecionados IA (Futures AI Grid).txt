@@ -1,0 +1,146 @@
+
+Tokens Selecionados IA (Futures AI Grid)
+Otrading AI Guia de Uso para Seleção Inteligente de Moedas
+I. Introdução e Princípios Fundamentais
+Qual é o valor da seleção de moedas por AI?
+Para ajudá-lo a filtrar de forma mais eficiente e precisa as criptomoedas adequadas à sua estratégia de negociação, a Otrading lançou uma ferramenta de seleção de moedas por AI, líder no setor. A ferramenta de seleção de moedas por AI é baseada no modelo de linguagem de grande escala da OpenAI, integrando 14 indicadores quantitativos profissionais (incluindo ATR, Ret, Liquidez, Intervalo, Momento, ADX, RSI, MDD, DDRatio, VolSpikeZ, Sigma, Sharpe, Beta, VaR95) e realizando filtragens multidimensionais com base em vários períodos, como 1 hora e 4 horas, para avaliar rapidamente a compatibilidade entre os ativos e a estratégia escolhida. Não é apenas um sistema de pontuação, mas sim um sistema inteligente de seleção de moedas que integra a volatilidade do mercado, direção, risco e eficiência de capital em uma única operação.
+Princípios
+Módulo
+Stack Tecnológico Chave
+Pontos Principais
+Engenharia de Características
+14 Indicadores + Sentimento de Mercado & Opiniões Políticas
+- ATR: NATR = ATR / Close × 100 %, período ajustado dinamicamente conforme o Regime (curto prazo n=14, longo prazo n=55). - RangeRatio: (High-Low)/ATR captura o “verdadeiro intervalo” vs “ruído”.<br /> - VolSpikeZ: algoritmo Welford online, Z = (Vol-μ)/σ, altamente sensível a fluxos extremos. <br> - DDR / MDD: razão entre o valor absoluto da retração e o retorno, quando o retorno é negativo, define DDR=+∞ para forçar a redução de peso.
+Pontuador (AIST)
+Árvores de Decisão Aumentadas por Gradiente × Rede Neural de Duas Fases
+1) GBT realiza uma triagem inicial em 10 indicadores → gera raw score; <br> 2) Rede neural integra sentimentos/opiniões externas → normaliza para 0-100. <br> Os rótulos de treinamento vêm do retorno real da estratégia após taxas e deslizamento, ajustando-se em janelas deslizantes de 90/30 dias.
+Pesos Sensíveis ao Regime
+4 Condições de Mercado (Bull/Bear/Consolidação/Extremo) Modelo de Markov Oculto + Kalman
+Alterna o modelo de pesos com base em VIX, Dominância do BTC e indicadores macroeconômicos: em mercados em baixa, reduz o peso do ATR e aumenta a Liquidez; em períodos de consolidação, aumenta o RangeRatio; em condições extremas, limita o Momento para evitar exageros.
+Percentis de Múltiplos Períodos TS×CS
+Distribuição de Séries Temporais & Seccionais
+① TS: observa a distribuição histórica de 120 períodos<br>② CS: comparação transversal de todas as moedas no mesmo nível<br>→ gera uma matriz de sinais “vermelho/amarelo/verde”, alimentando o planejador de estratégias para determinar Long/Short e pesos de posição.
+Mapeamento de Estratégias
+10 Estratégias × Matriz de Pesos de Indicadores Principais (exemplo)
+CTA tendência = 35% Momento + 20% ATR + 15% ADX + …<br> Grade adaptativa = 30% RangeRatio + 25% Liquidez + …<br> A matriz é reavaliada após o fechamento diário, e se o Regime mudar durante o dia, é acionado um fast refresh.
+Em uma frase: A pontuação AIST não é um “código misterioso”, mas sim uma agregação de estrutura micro em tempo real + significância estatística de múltiplos períodos + pesos dinâmicos sensíveis ao Regime de Alpha-Ranking.
+II. ? Destaques Funcionais
+Três Elementos de Lucro:
+•
+ATR (Média da Amplitude Real)
+•
+Mede a amplitude de volatilidade da moeda.
+•
+ATR mais alto é adequado para estratégias de volatilidade (como grade, CTA).
+•
+Pontuação AIST (Seleção Inteligente de Moedas por AI)
+•
+Pontuação gerada por mais de 10 indicadores.
+•
+Quanto maior a pontuação, melhor a compatibilidade da moeda com a estratégia.
+•
+Índice Long/Short
+•
+Previsão da direção da tendência da AI.
+•
+Avaliação rápida se a estratégia atual deve ser comprada (long) ou vendida (short).
+III. ? Melhores Cenários de Uso
+1.
+Filtragem Rápida de Ativos Cripto
+Utilize a pontuação AI para filtrar rapidamente as moedas mais adequadas a uma estratégia específica (como CTA, Grade, DCA).
+2.
+Classificação de Prioridade de Ativos e Referência de Pesos Dinâmicos
+Classifique os ativos de acordo com a pontuação, alocando mais capital em moedas com potencial, aumentando a eficiência geral do capital.
+3.
+Filtragem de Risco e Eliminação de Ativos Cripto Ineficientes
+Remova automaticamente moedas com baixa liquidez, volatilidade extremamente baixa ou grandes deslizamentos, evitando que posições sejam ocupadas de forma ineficiente.
+4.
+Eliminação de Moedas Ineficientes ou de Alto Risco
+Identifique automaticamente moedas com baixa volatilidade, baixa liquidez ou movimentos extremos. Por exemplo:
+•
+Estratégia de Grade exclui moedas com forte tendência, evitando perdas em mercados unidirecionais;
+•
+Estratégia CTA elimina moedas que oscilam repetidamente, reduzindo o risco de desgaste nas negociações.
+5.
+Auxílio na Avaliação do Estado do Mercado (Identificação de Bull/Bear)
+Combine a pontuação da direção da tendência com ferramentas externas de análise de mercado para identificar a fase do mercado (bull market/consolidação/bear market) e ajustar em tempo real os pesos da estratégia.
+IV. ?️ Detalhamento de Diferentes Cenários de Estratégia
+Entre os três principais indicadores, cada estratégia deve equilibrar adequadamente seus pontos de foco. Abaixo está uma tabela de comparação de estratégias típicas:
+? Tabela de Comparação de Adaptação de Estratégias para os Três Principais Indicadores
+Tipo de Estratégia
+Volatilidade (ATR)
+Adaptabilidade da Estratégia (Pontuação AIST)
+Direção da Tendência (Long/Short)
+Interpretação
+CTA (Estratégia de Tendência)
+✅ Alta volatilidade é melhor
+✅ Alta pontuação representa correspondência de momento
+✅ A direção da tendência deve corresponder
+Estratégias de tendência dependem de movimentos claros, portanto, alta ATR + alto índice Long/Short, alta AIST indica conformidade da estratégia.
+Grade (Estratégia de Grade)
+✅ Volatilidade média-alta
+✅ Pontuação de consolidação deve ser alta
+? Tendências fortes podem resultar em perdas
+A Grade é mais adequada para moedas voláteis sem tendência unidirecional, alta ATR mas baixa pontuação Long/Short é mais adequada; AIST pode capturar a estrutura.
+DCA (Estratégia de Investimento Regular)
+? Baixa volatilidade é mais estável
+✅ Estabilidade da tendência é crucial
+? Tendências muito fortes podem levar a investimentos em alta
+DCA busca eficiência de capital a longo prazo, preferindo ativos de baixa ATR e estáveis, alta AIST indica adequação ao ritmo de investimento a longo prazo.
+Os pontos de foco a serem escolhidos para diferentes estratégias são os seguintes:
+•
+Estratégia CTA: Tendência & Momento são fundamentais, quanto maior o ATR, melhor; a proporção de indicadores de retração deve ser reduzida.
+•
+Estratégia de Grade: “Aproveitar a consolidação”, liquidez e volatilidade devem ser equilibradas, com maior atenção à volatilidade e intervalo de preços.
+•
+Estratégia DCA: Priorizar ativos de baixa volatilidade (ATR baixo), alta AIST, alta liquidez e alta estabilidade.
+Definir claramente os indicadores necessários para diferentes estratégias ajuda os usuários a selecionar ativos de forma mais precisa.
+? V. Interpretação de Exemplos
+Ativo
+ATR
+Pontuação AIST
+Long/Short
+Recomendação de Estratégia
+BONK
+4.9
+35
+66
+Grade de consolidação
+ACH
+2.0
+41
+48
+DCA ou estratégia de tendência estável
+? VI. Caminho Prático: 3 Passos para Iniciantes
+1.
+Escolher um Modelo de Estratégia
+•
+Iniciantes são aconselhados a começar com [DCA Inteligente] ou [Grade de Consolidação].
+2.
+Verificar Cartões de Análise
+•
+Cada cartão de moeda exibe: ATR, Pontuação AIST, Índice Long/Short.
+•
+Avalie a compatibilidade com base nos objetivos da estratégia, selecionando ativos de alta pontuação como candidatos.
+3.
+Ativar o Robô
+•
+Clique na moeda escolhida, acesse a página de parâmetros e preencha os parâmetros de acordo com seu capital.
+•
+Após confirmar que está correto, clique em “Iniciar”, e o robô começará a operar imediatamente.
+4.
+Verificar o Robô
+Clique em “Negociação” → “Robô”, para verificar ou ajustar o status do robô de negociação em operação a qualquer momento.
+? VII. Perguntas Frequentes Q&A
+•
+Pontuação alta = certeza de lucro? → Não, deve-se considerar deslizamentos, taxas e o estado do mercado em conjunto.
+•
+Posso me basear apenas em um indicador? → É recomendável avaliar pelo menos três indicadores em combinação (como ATR + AIST + Long/Short).
+•
+Sou iniciante, por onde começo? → Recomenda-se começar a experimentar com [AI DCA] ou [AI GRID] na “Modelo de Estratégia”.
+✅ VIII. Conclusão: Como você pode usar a Otrading
+•
+Veteranos: Utilize como um pontuador multifatorial, integrando-o ao seu motor de estratégia para aprimorar a qualidade dos sinais.
+•
+Iniciantes: Use como um “GPS de seleção automática de moedas”, ajustando conforme as orientações, sem a necessidade de filtrar moedas cegamente.
+? Agora faça login no painel e execute seu primeiro AI Scan, iniciando sua jornada de seleção inteligente de moedas!

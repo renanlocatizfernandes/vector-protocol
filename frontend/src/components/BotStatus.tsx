@@ -93,6 +93,16 @@ export const BotStatus: React.FC = () => {
     };
 
     const isRunning = !!bot?.running;
+    const dbPnl = daily?.db?.total_pnl ?? daily?.total_pnl ?? 0;
+    const dbWinRate = daily?.db?.win_rate ?? daily?.win_rate ?? 0;
+    const dbTrades = daily?.db?.trades_count ?? daily?.trades_count ?? 0;
+    const exRealized = daily?.exchange?.net_realized_pnl ?? 0;
+    const exUnrealized = daily?.exchange?.unrealized_pnl ?? 0;
+    const exFees = daily?.exchange?.fees ?? 0;
+    const exFunding = daily?.exchange?.funding ?? 0;
+    const exNet = daily?.exchange?.net_pnl ?? (exRealized + exUnrealized);
+    const exTotalWallet = daily?.exchange?.total_wallet ?? daily?.balance ?? 0;
+    const exAvailable = daily?.exchange?.available_balance ?? 0;
 
     return (
         <Card className="h-full relative overflow-hidden glass-card border-white/10 shadow-2xl hover:shadow-primary/5 transition-all duration-300">
@@ -123,21 +133,57 @@ export const BotStatus: React.FC = () => {
             </CardHeader>
 
             <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
                     <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Daily P&L</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Daily P&L (DB)</span>
                         <span className={cn(
                             "text-2xl font-bold",
-                            daily && daily.total_pnl >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                            dbPnl >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
                         )}>
-                            ${daily ? daily.total_pnl.toFixed(2) : '0.00'}
+                            ${dbPnl.toFixed(2)}
                         </span>
+                        <span className="text-[10px] text-muted-foreground">Trades: {dbTrades}</span>
                     </div>
                     <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-accent/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate</span>
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate (DB)</span>
                         <span className="text-2xl font-bold text-primary drop-shadow-[0_0_8px_rgba(42,212,198,0.3)]">
-                            {daily ? daily.win_rate.toFixed(1) : '0.0'}%
+                            {dbWinRate.toFixed(1)}%
                         </span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L (Exchange)</span>
+                        <span className={cn(
+                            "text-2xl font-bold",
+                            exRealized >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                        )}>
+                            ${exRealized.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">Fees: {exFees.toFixed(2)} | Funding: {exFunding.toFixed(2)}</span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Unrealized P&L (Exchange)</span>
+                        <span className={cn(
+                            "text-2xl font-bold",
+                            exUnrealized >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                        )}>
+                            ${exUnrealized.toFixed(2)}
+                        </span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Net P&L (R+U)</span>
+                        <span className={cn(
+                            "text-2xl font-bold",
+                            exNet >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                        )}>
+                            ${exNet.toFixed(2)}
+                        </span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
+                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Wallet (Exchange)</span>
+                        <span className="text-xl font-bold text-white">
+                            ${exTotalWallet.toFixed(2)}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">Available: ${exAvailable.toFixed(2)}</span>
                     </div>
                 </div>
 

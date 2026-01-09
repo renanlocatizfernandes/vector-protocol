@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Query
 import asyncio
+import time
+import httpx
 from utils.binance_client import binance_client
 from modules.market_scanner import market_scanner
 from modules.signal_generator import signal_generator
@@ -9,6 +11,11 @@ from api.models.trades import Trade
 
 router = APIRouter()
 logger = setup_logger("market_routes")
+
+_TICKERS_CACHE = {"ts": 0.0, "data": []}
+_TICKERS_TTL_SEC = 15
+_FNG_CACHE = {"ts": 0.0, "data": [], "limit": 0}
+_FNG_TTL_SEC = 300
 
 
 @router.get("/balance")
@@ -134,6 +141,100 @@ async def get_top_100():
     """Retorna top 100 moedas por volume"""
     symbols = await binance_client.get_top_futures_symbols(limit=100)
     return {"count": len(symbols), "symbols": symbols}
+
+
+@router.get("/tickers")
+async def get_tickers(limit: int = Query(default=200, ge=20, le=1000), quote: str = "USDT"):
+    """Retorna tickers futuros filtrados por quote (default USDT)."""
+    now = time.time()
+    if _TICKERS_CACHE["data"] and (now - _TICKERS_CACHE["ts"]) < _TICKERS_TTL_SEC:
+        data = _TICKERS_CACHE["data"]
+    else:
+        try:
+            rows = await asyncio.to_thread(binance_client.client.futures_ticker)
+        except Exception as e:
+            logger.error(f"Erro ao obter tickers: {e}")
+            return {"count": 0, "tickers": []}
+
+        quote = str(quote or "USDT").upper()
+        data = []
+        for t in rows or []:
+            symbol = str(t.get("symbol") or "").upper()
+            if not symbol.endswith(quote):
+                continue
+            try:
+                last_price = float(t.get("lastPrice", 0) or 0)
+            except Exception:
+                last_price = 0.0
+            try:
+                change_pct = float(t.get("priceChangePercent", 0) or 0)
+            except Exception:
+                change_pct = 0.0
+            try:
+                quote_volume = float(t.get("quoteVolume", 0) or 0)
+            except Exception:
+                quote_volume = 0.0
+
+            data.append({
+                "symbol": symbol,
+                "last_price": last_price,
+                "price_change_percent": change_pct,
+                "quote_volume": quote_volume
+            })
+
+        _TICKERS_CACHE["data"] = data
+        _TICKERS_CACHE["ts"] = now
+
+    data_sorted = sorted(data, key=lambda x: x.get("quote_volume", 0), reverse=True)
+    limited = data_sorted[:limit]
+    return {"count": len(limited), "tickers": limited}
+
+
+@router.get("/fear-greed")
+async def get_fear_greed(limit: int = Query(default=30, ge=1, le=365)):
+    """Returns Fear and Greed index series (cached)."""
+    now = time.time()
+    if (
+        _FNG_CACHE["data"]
+        and _FNG_CACHE["limit"] == limit
+        and (now - _FNG_CACHE["ts"]) < _FNG_TTL_SEC
+    ):
+        data = _FNG_CACHE["data"]
+    else:
+        url = f"https://api.alternative.me/fng/?limit={limit}&format=json"
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(url)
+                res.raise_for_status()
+                payload = res.json()
+        except Exception as e:
+            logger.error(f"Error fetching fear_greed: {e}")
+            return {"count": 0, "data": []}
+
+        rows = payload.get("data") or []
+        data = []
+        for row in rows:
+            try:
+                value = int(float(row.get("value", 0) or 0))
+            except Exception:
+                value = 0
+            try:
+                ts = int(row.get("timestamp", 0) or 0)
+            except Exception:
+                ts = 0
+            data.append({
+                "value": value,
+                "classification": row.get("value_classification"),
+                "timestamp": ts,
+            })
+
+        data = sorted(data, key=lambda x: x["timestamp"])
+        _FNG_CACHE["data"] = data
+        _FNG_CACHE["ts"] = now
+        _FNG_CACHE["limit"] = limit
+
+    latest = data[-1] if data else None
+    return {"count": len(data), "data": data, "latest": latest}
 
 
 @router.get("/klines/{symbol}")

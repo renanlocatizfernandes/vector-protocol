@@ -1,0 +1,104 @@
+
+Layout
+Guia de Uso dos Parâmetros de Aumento da Estratégia de Grade “Aritmética & Geométrica”
+Este artigo é voltado para novos jogadores que configuram robôs de grade pela primeira vez, ajudando você a entender rapidamente e usar corretamente
+
+o coeficiente aritmético (aritmético) e o coeficiente geométrico (geométrico) para os efeitos, diferenças e cenários típicos de aumento de posição. Os exemplos no texto são aplicáveis a grade unidirecional / grade bidirecional, com a direção do preço descrita como “queda → aumento de posição, alta → realização de lucro”.
+1. Conceitos e Fórmulas Principais
+Nome
+Significado
+Fórmula de Implementação de Código (depth = nível de posição, começando de 0)
+Intervalo Aritmético coeficiente aritmético
+A cada queda de um nível, aumenta linearmente o intervalo adicional Δ%
+intervalo de aumento alvo = intervalo base + Δ × depth
+Intervalo Geométrico coeficiente geométrico
+A cada queda de um nível, amplia geometricamente ®%
+intervalo de aumento alvo = intervalo base × (R)^depth
+O intervalo base é especificado pelo campo Interval (%), e no código é convertido proporcionalmente dividindo por 100 pelo preço.
+
+Quando ambos os parâmetros são preenchidos, prioriza-se o geométrico.
+2. Por que ter dois modos?
+Objetivo
+Uso Sugerido
+Risco controlado, quanto mais profunda a queda, mais “paciência” para aumentar a posição
+Aritmético / Geométrico são ambos válidos; Aritmético é mais suave e fácil de estimar visualmente
+Buscar lucros em volatilidade extrema, desejando que a velocidade de aumento varie exponencialmente com a profundidade
+Geométrico
+Apenas deseja ampliar / reduzir um intervalo fixo
+Continue usando o Interval original; defina geométrico como 1 ou aritmético como 0
+3. Casos de Uso Cenário
+3.1 Exemplo de Grade Aritmética
+Interval       = 0.5   // Intervalo base 0.5%
+coeficiente aritmético = 0.3   // A cada nível adicional, +0.3%  
+coeficiente geométrico      = 1.0     // Geométrico desligado
+coeficiente aritmético      = 0.0     // Aritmético desligado
+Nível depth
+Queda necessária = intervalo base + Δ×depth
+0 (primeira posição comprada)
+0.50 %
+1
+0.80 %
+2
+1.10 %
+3
+1.40 %
+…
+Aumento linear
+Aplicável: Deseja que o passo de aumento de posição “aumente de forma constante”, sem acelerar exponencialmente ou se tornar excessivamente denso.
+3.2 Exemplo de Grade Geométrica
+Interval  = 0.5   // Intervalo base 0.5%
+coeficiente geométrico = 1.2   // Ampliação de 1.2 vezes a cada nível
+coeficiente aritmético = 0.0
+Nível depth
+Queda necessária = intervalo base × 1.2^depth
+0
+0.50 %
+1
+0.60 %
+2
+0.72 %
+3
+0.86 %
+4
+1.03 %
+…
+Ampliação exponencial
+Aplicável:
+1.
+Volatilidade extrema do preço: Aumentar a posição apenas em quedas profundas, evitando ativações frequentes.
+2.
+Capital limitado e desejo de cobertura em longo gradiente: O crescimento exponencial torna o número total de grades controlável.
+Se desejar acelerar o aumento de posição, pode definir coeficiente geométrico < 1.0 (como 0.9 → reduz 10% a cada nível).
+
+Mas atenção: se o índice geométrico for negativo demais, pode resultar em intervalos muito pequenos, aumentando drasticamente o risco.
+4. Dicas de Combinação
+Objetivo
+Combinação de Parâmetros
+Pressão de Posição (comprar rapidamente)
+Defina FirstUSDT > 0 ao mesmo tempo, controle geométrico/aritmético para os níveis subsequentes
+Primeiros níveis densos, níveis profundos esparsos
+coeficiente aritmético = 0.2, combinado com um Interval=0.3 menor
+Aumentar apenas em quedas profundas, buscando extrema compra na baixa
+coeficiente geométrico = 1.3~1.5, Interval=0.8
+5. Perguntas Frequentes
+1.
+Q: O que acontece se Interval e coeficiente geométrico|aritmético forem ambos 0?
+
+A: O robô calculará com intervalo fixo de 0%, o que equivale a perder o significado da grade, não é recomendado.
+2.
+Q: Os parâmetros podem ser modificados a qualquer momento?
+
+A: Sim, mas os níveis de posição construídos serão recalculados com base na fórmula modificada para os limites de aumento/realização de lucro, fique atento ao risco.
+3.
+Q: Robôs antigos e novos serão afetados?
+
+A: Após a atualização para a nova versão, robôs antigos com coeficiente geométrico > 0 funcionarão automaticamente no modo exponencial,
+
+recomenda-se verificar e ajustar os valores dos parâmetros antes da atualização (antigo 1.5 vezes ≈ novo 1.5, efeito exponencial mais agressivo).
+6. Resumo
+•
+Aritmético: Aumento linear, intuitivo e fácil de entender.
+•
+Geométrico: Aumento exponencial, adaptável à profundidade, pode efetivamente comprimir o número de grades, mas deve ser configurado com cautela.
+•
+Antes de configurar, observe a distribuição da grade e a curva de lucros e perdas com diferentes parâmetros em uma rede de testes ou ferramenta de backtesting, antes de implantar em tempo real.

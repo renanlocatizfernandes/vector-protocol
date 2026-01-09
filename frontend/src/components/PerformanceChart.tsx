@@ -1,69 +1,73 @@
 import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { http } from '../services/api';
+import { getRealizedDailyStats, type RealizedDailyPoint } from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { TrendingUp, DollarSign } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface TradeHistory {
-    id: number;
-    closed_at: string;
-    pnl: number;
-    symbol: string;
-}
+type ChartRow = {
+    date: string;
+    net_pnl: number;
+    realized_pnl: number;
+    cumulative: number;
+};
 
 export const PerformanceChart: React.FC = () => {
-    const [data, setData] = useState<any[]>([]);
+    const [data, setData] = useState<ChartRow[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        fetchHistory();
-        const interval = setInterval(fetchHistory, 30000);
+        fetchSeries();
+        const interval = setInterval(fetchSeries, 30000);
         return () => clearInterval(interval);
     }, []);
 
-    const fetchHistory = async () => {
+    const fetchSeries = async () => {
         try {
-            const response = await http.get('/api/trading/history?limit=50');
-            const trades: TradeHistory[] = response.data;
+            const response = await getRealizedDailyStats(30);
+            const series: RealizedDailyPoint[] = response.series || [];
 
             let cumulative = 0;
-            const sorted = [...trades].sort((a, b) => new Date(a.closed_at).getTime() - new Date(b.closed_at).getTime());
-
-            const chartData = sorted.map(t => {
-                cumulative += t.pnl;
-                return {
-                    date: new Date(t.closed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    pnl: t.pnl,
-                    cumulative: cumulative,
-                    symbol: t.symbol
-                };
-            });
+            const chartData = series
+                .slice()
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                .map(point => {
+                    cumulative += point.net_pnl || 0;
+                    const parsedDate = new Date(point.date);
+                    return {
+                        date: parsedDate.toLocaleDateString([], { month: 'short', day: '2-digit' }),
+                        net_pnl: point.net_pnl || 0,
+                        realized_pnl: point.realized_pnl || 0,
+                        cumulative
+                    };
+                });
 
             setData(chartData);
         } catch (error) {
-            console.error("Erro ao carregar histórico:", error);
+            console.error('Erro ao carregar performance acumulada:', error);
         } finally {
             setLoading(false);
         }
     };
 
-    if (loading) return (
-        <Card className="h-full border-white/10 bg-white/5">
-            <div className="h-full flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            </div>
-        </Card>
-    );
+    if (loading) {
+        return (
+            <Card className="h-full border-white/10 bg-white/5">
+                <div className="h-full flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+            </Card>
+        );
+    }
 
     if (data.length === 0) {
         return (
-        <Card className="h-full flex items-center justify-center text-muted-foreground border-dashed border-white/10">
-            <CardContent>
-                <p>No trading history available.</p>
-            </CardContent>
-        </Card>
-    );
+            <Card className="h-full flex items-center justify-center text-muted-foreground border-dashed border-white/10">
+                <CardContent>
+                    <p>Nenhum histórico de performance disponível.</p>
+                </CardContent>
+            </Card>
+        );
     }
 
     const currentPnl = data[data.length - 1].cumulative;
@@ -80,10 +84,17 @@ export const PerformanceChart: React.FC = () => {
                     <DollarSign className="h-4 w-4 text-primary" /> Total Performance
                 </CardTitle>
                 <div className="flex flex-col items-end">
-                    <span className={cn("text-2xl font-bold tracking-tight", isPositive ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]")}>
+                    <span
+                        className={cn(
+                            'text-2xl font-bold tracking-tight',
+                            isPositive
+                                ? 'text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]'
+                                : 'text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]'
+                        )}
+                    >
                         ${currentPnl.toFixed(2)}
                     </span>
-                    <span className="text-xs text-muted-foreground">Cumulative PnL</span>
+                    <span className="text-xs text-muted-foreground">Cumulative PnL (Exchange)</span>
                 </div>
             </CardHeader>
             <CardContent className="flex-1 min-h-[300px] pt-4 z-10">
@@ -91,8 +102,16 @@ export const PerformanceChart: React.FC = () => {
                     <AreaChart data={data}>
                         <defs>
                             <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={isPositive ? "#2bd4a5" : "#ff5a5f"} stopOpacity={0.2} />
-                                <stop offset="95%" stopColor={isPositive ? "#2bd4a5" : "#ff5a5f"} stopOpacity={0} />
+                                <stop
+                                    offset="5%"
+                                    stopColor={isPositive ? '#2bd4a5' : '#ff5a5f'}
+                                    stopOpacity={0.2}
+                                />
+                                <stop
+                                    offset="95%"
+                                    stopColor={isPositive ? '#2bd4a5' : '#ff5a5f'}
+                                    stopOpacity={0}
+                                />
                             </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
@@ -109,7 +128,7 @@ export const PerformanceChart: React.FC = () => {
                             fontSize={11}
                             tickLine={false}
                             axisLine={false}
-                            tickFormatter={(value) => `$${value}`}
+                            tickFormatter={value => `$${value.toFixed(0)}`}
                         />
                         <Tooltip
                             contentStyle={{
@@ -120,13 +139,13 @@ export const PerformanceChart: React.FC = () => {
                                 boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
                             }}
                             itemStyle={{ color: '#ffffff' }}
-                            formatter={(value: number) => [`$${value.toFixed(2)}`, 'PnL']}
+                            formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name]}
                             labelStyle={{ color: '#9aa3b2' }}
                         />
                         <Area
                             type="monotone"
                             dataKey="cumulative"
-                            stroke={isPositive ? "#2bd4a5" : "#ff5a5f"}
+                            stroke={isPositive ? '#2bd4a5' : '#ff5a5f'}
                             strokeWidth={3}
                             fillOpacity={1}
                             fill="url(#colorPnl)"

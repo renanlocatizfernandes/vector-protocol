@@ -9,7 +9,8 @@ import {
     Menu,
     Bell,
     Wallet,
-    BarChart3
+    BarChart3,
+    LineChart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -23,18 +24,27 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const [collapsed, setCollapsed] = useState(false);
     const [balance, setBalance] = useState<number | null>(null);
     const [balanceChange, setBalanceChange] = useState<number>(0);
+    const [balanceChangeLabel, setBalanceChangeLabel] = useState<string>('Daily (DB)');
 
     useEffect(() => {
         const fetchBalance = async () => {
             try {
                 const res = await fetch('/api/trading/stats/daily');
                 const data = await res.json();
-                if (data && typeof data.balance === 'number') {
-                    setBalance(data.balance);
+                const exchangeBalance = data?.exchange?.total_wallet;
+                const netPnl = data?.exchange?.net_pnl;
+                const resolvedBalance = typeof exchangeBalance === 'number' ? exchangeBalance : data?.balance;
+                if (typeof resolvedBalance === 'number') {
+                    setBalance(resolvedBalance);
                 }
-                if (data && typeof data.total_pnl === 'number' && data.balance) {
-                    const changePct = (data.total_pnl / data.balance) * 100;
+                if (typeof netPnl === 'number' && resolvedBalance) {
+                    const changePct = (netPnl / resolvedBalance) * 100;
                     setBalanceChange(changePct);
+                    setBalanceChangeLabel('Net (R+U)');
+                } else if (data && typeof data.total_pnl === 'number' && resolvedBalance) {
+                    const changePct = (data.total_pnl / resolvedBalance) * 100;
+                    setBalanceChange(changePct);
+                    setBalanceChangeLabel('Daily (DB)');
                 }
             } catch (e) {
                 console.error('Error fetching balance:', e);
@@ -48,6 +58,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const menuItems = [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/metrics', icon: BarChart3, label: 'Metrics' },
+        { path: '/markets', icon: LineChart, label: 'Markets' },
         { path: '/positions', icon: Activity, label: 'Positions' },
         { path: '/config', icon: Settings, label: 'Configuration' },
         { path: '/logs', icon: Terminal, label: 'System Logs' },
@@ -193,7 +204,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 balanceChange >= 0
                                     ? "text-success bg-success/10 border-success/20 shadow-[0_0_10px_rgba(43,212,165,0.2)]"
                                     : "text-danger bg-danger/10 border-danger/20 shadow-[0_0_10px_rgba(255,90,95,0.2)]"
-                            )}>
+                            )} title={balanceChangeLabel}>
                                 {balanceChange >= 0 ? '+' : ''}{balanceChange.toFixed(2)}%
                             </span>
                         </div>
