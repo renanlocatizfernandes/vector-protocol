@@ -149,11 +149,25 @@ class MarketIntelligence:
                 return self.cache[cache_key]["data"]
 
             # Fetch recent liquidation orders
-            liquidations = await asyncio.to_thread(
-                binance_client.client.futures_force_orders,
-                symbol=symbol,
-                limit=100  # Last 100 liquidations
-            )
+            # Note: Binance API may not always have this endpoint available
+            liquidations = []
+            try:
+                if hasattr(binance_client.client, 'futures_liquidation_orders'):
+                    liquidations = await asyncio.to_thread(
+                        binance_client.client.futures_liquidation_orders,
+                        symbol=symbol,
+                        limit=100
+                    )
+                elif hasattr(binance_client.client, 'futures_force_orders'):
+                    liquidations = await asyncio.to_thread(
+                        binance_client.client.futures_force_orders,
+                        symbol=symbol,
+                        limit=100
+                    )
+                else:
+                    logger.debug(f"Liquidation orders endpoint not available for {symbol}")
+            except Exception as e:
+                logger.debug(f"Could not fetch liquidation data for {symbol}: {e}")
 
             if not liquidations:
                 return {

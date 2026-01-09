@@ -293,6 +293,11 @@ class PositionMonitor:
                                     self._track_event("breakeven_stop", trade.symbol, pnl_percentage, current_price)
                                     continue
 
+                            # ✅ MELHORIA #4 - TP Ladder (3 níveis progressivos)
+                            if await self._check_tp_ladder(trade, current_price, pnl_percentage, db):
+                                self._track_event("tp_ladder", trade.symbol, pnl_percentage, current_price)
+                                # Não fazer continue aqui - deixar posição continuar aberta
+
                             # ✅ PROFIT OPTIMIZATION - Funding-Aware Exit (HIGH PRIORITY)
                             if getattr(self.settings, "ENABLE_FUNDING_EXITS", True):
                                 if await self._check_funding_exit(trade, pnl_percentage, current_price, db):
@@ -437,15 +442,15 @@ class PositionMonitor:
         db: SessionLocal
     ) -> bool:
         """
-        ✅ PROFIT OPTIMIZATION v6.0: Breakeven Stop Protection
+        ✅ MELHORIA #6: Breakeven Stop Protection RÁPIDO
 
         CRITICAL: Prevents winners from turning into losers!
 
-        Activation: When P&L reaches BREAKEVEN_ACTIVATION_PCT (default +2%)
+        Activation: When P&L reaches +8% (era +2%, agora mais rápido)
         Stop Level: True breakeven (entry + all fees)
 
         This protects winning trades by locking in breakeven as the worst-case exit,
-        ensuring that positions that reached +2% profit never become losses.
+        ensuring that positions that reached +8% profit never become losses.
         """
 
         if self._skip_action_if_not_whitelisted(trade.symbol, "breakeven_stop"):
@@ -459,7 +464,8 @@ class PositionMonitor:
         if not hasattr(trade, 'breakeven_stop_activated'):
             trade.breakeven_stop_activated = False
 
-        breakeven_threshold = getattr(self.settings, 'BREAKEVEN_ACTIVATION_PCT', 2.0)
+        # ✅ MELHORIA #6: Breakeven mais rápido aos +8%
+        breakeven_threshold = getattr(self.settings, 'BREAKEVEN_THRESHOLD_PCT', 8.0)
 
         # Check if breakeven stop should be ACTIVATED
         if not trade.breakeven_stop_activated and pnl_percentage >= breakeven_threshold:
@@ -538,6 +544,121 @@ class PositionMonitor:
                 return True
 
         return False
+
+    async def _check_tp_ladder(
+        self,
+        trade: Trade,
+        current_price: float,
+        pnl_percentage: float,
+        db: SessionLocal
+    ) -> bool:
+        """
+        ✅ MELHORIA #4: Take Profit Ladder (3 níveis)
+
+        Realiza lucros parciais em 3 níveis progressivos:
+        - Nível 1: +20% → Realizar 30% da posição
+        - Nível 2: +40% → Realizar mais 30% da posição
+        - Nível 3: +60% → Realizar 40% restante
+
+        Isso protege lucros contra reversões enquanto mantém exposição para ganhos maiores.
+        """
+
+        if self._skip_action_if_not_whitelisted(trade.symbol, "partial_tp"):
+            return False
+
+        if not getattr(self.settings, 'TP_LADDER_ENABLED', True):
+            return False
+
+        # Inicializar contador de TPs parciais
+        if not hasattr(trade, 'tp_levels_hit'):
+            trade.tp_levels_hit = 0
+
+        # Configurações dos níveis
+        level_1_pct = getattr(self.settings, 'TP_LADDER_LEVEL_1_PCT', 20.0)
+        level_1_size = getattr(self.settings, 'TP_LADDER_LEVEL_1_SIZE', 0.30)
+        level_2_pct = getattr(self.settings, 'TP_LADDER_LEVEL_2_PCT', 40.0)
+        level_2_size = getattr(self.settings, 'TP_LADDER_LEVEL_2_SIZE', 0.30)
+        level_3_pct = getattr(self.settings, 'TP_LADDER_LEVEL_3_PCT', 60.0)
+        level_3_size = getattr(self.settings, 'TP_LADDER_LEVEL_3_SIZE', 0.40)
+
+        # Determinar qual nível atingiu
+        target_pct = None
+        partial_size = None
+        level_number = None
+
+        if trade.tp_levels_hit == 0 and pnl_percentage >= level_1_pct:
+            target_pct = level_1_pct
+            partial_size = level_1_size
+            level_number = 1
+        elif trade.tp_levels_hit == 1 and pnl_percentage >= level_2_pct:
+            target_pct = level_2_pct
+            partial_size = level_2_size
+            level_number = 2
+        elif trade.tp_levels_hit == 2 and pnl_percentage >= level_3_pct:
+            target_pct = level_3_pct
+            partial_size = level_3_size
+            level_number = 3
+
+        if target_pct is None:
+            return False
+
+        try:
+            # Calcular quantidade a realizar (baseado na posição ORIGINAL)
+            original_qty = trade.quantity
+            partial_qty = original_qty * partial_size
+
+            symbol_info = await binance_client.get_symbol_info(trade.symbol)
+            partial_qty = round_step_size(partial_qty, symbol_info['step_size'])
+
+            # Executar ordem MARKET para realizar parcial
+            side = 'SELL' if trade.direction == 'LONG' else 'BUY'
+            position_side = None
+            try:
+                position_side = await binance_client.get_position_side(trade.direction)
+            except Exception as e:
+                logger.debug(f"Position side lookup failed: {e}")
+
+            order_params = {
+                "symbol": trade.symbol,
+                "side": side,
+                "type": "MARKET",
+                "quantity": partial_qty
+            }
+            if position_side and position_side != "BOTH":
+                order_params["positionSide"] = position_side
+
+            order = await asyncio.to_thread(
+                self.client.futures_create_order,
+                **order_params
+            )
+
+            # Atualizar trade
+            trade.quantity = trade.quantity - partial_qty
+            trade.tp_levels_hit = level_number
+            db.commit()
+
+            logger.info(
+                f"✅ TP LADDER Nível {level_number}: {trade.symbol}\n"
+                f"  P&L: {pnl_percentage:.2f}% (target: {target_pct:.0f}%)\n"
+                f"  Realizado: {partial_size*100:.0f}% da posição original ({partial_qty} qty)\n"
+                f"  Restante: {trade.quantity} qty"
+            )
+
+            try:
+                await telegram_notifier.send_message(
+                    f"💰 TP Ladder Nível {level_number}: {trade.symbol}\n"
+                    f"P&L: {pnl_percentage:.2f}%\n"
+                    f"Realizado: {partial_size*100:.0f}%\n"
+                    f"Restante: {trade.quantity} qty"
+                )
+            except:
+                pass
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao executar TP Ladder: {e}")
+            return False
 
     async def _check_funding_exit(
         self,
@@ -888,21 +1009,26 @@ class PositionMonitor:
         if not getattr(self.settings, "DCA_ENABLED", True):
             return False
             
-        # Verificar limite de DCAs
-        max_dca = int(getattr(self.settings, "MAX_DCA_COUNT", 2))
+        # ✅ MELHORIA #3: DCA Multi-Nível (3 camadas progressivas)
+        max_dca = int(getattr(self.settings, "MAX_DCA_COUNT", 3))
         current_dca = int(trade.dca_count or 0)
-        
+
         if current_dca >= max_dca:
             return False
-            
-        # Verificar threshold (-2.5%)
-        dca_threshold = float(getattr(self.settings, "DCA_THRESHOLD_PCT", -2.5))
-        
-        # Só faz DCA se o preço cair abaixo do threshold
-        # E se já caiu mais um tanto desde o último DCA (ex: -2.5%, -5.0%)
-        required_drop = dca_threshold * (current_dca + 1)
-        
-        if pnl_percentage <= required_drop:
+
+        # Determinar threshold e tamanho baseado no nível de DCA
+        if current_dca == 0:
+            dca_threshold = float(getattr(self.settings, "DCA_LEVEL_1_THRESHOLD_PCT", -3.0))
+            dca_size_pct = float(getattr(self.settings, "DCA_LEVEL_1_SIZE_PCT", 0.30))
+        elif current_dca == 1:
+            dca_threshold = float(getattr(self.settings, "DCA_LEVEL_2_THRESHOLD_PCT", -6.0))
+            dca_size_pct = float(getattr(self.settings, "DCA_LEVEL_2_SIZE_PCT", 0.40))
+        else:  # current_dca == 2
+            dca_threshold = float(getattr(self.settings, "DCA_LEVEL_3_THRESHOLD_PCT", -10.0))
+            dca_size_pct = float(getattr(self.settings, "DCA_LEVEL_3_SIZE_PCT", 0.30))
+
+        # Verificar se atingiu o threshold do nível atual
+        if pnl_percentage <= dca_threshold:
             # ✅ NOVO: Não fazer DCA se já atingiu Max Loss ou Emergency Stop
             if pnl_percentage <= self.max_loss_per_trade:
                 logger.warning(f"🛑 DCA cancelado para {trade.symbol}: PnL {pnl_percentage:.2f}% atingiu Max Loss")
@@ -929,14 +1055,18 @@ class PositionMonitor:
                 pass # Se falhar verificação, assume risco e faz DCA
             
             logger.info(
-                f"📉 DCA OPPORTUNITY: {trade.symbol} PnL {pnl_percentage:.2f}%\n"
+                f"📉 DCA NIVEL {current_dca + 1}: {trade.symbol} PnL {pnl_percentage:.2f}%\n"
+                f"  Threshold: {dca_threshold}%, Tamanho: {dca_size_pct*100:.0f}%\n"
                 f"  DCA Count: {current_dca}/{max_dca}\n"
                 f"  Executando compra média..."
             )
-            
-            # Calcular tamanho do DCA (Martingale ou fixo)
-            multiplier = float(getattr(self.settings, "DCA_MULTIPLIER", 1.5))
-            additional_qty = trade.quantity * multiplier
+
+            # ✅ MELHORIA #3: Calcular tamanho baseado no percentual do nível
+            original_qty = trade.quantity / max(1, (1 + sum([
+                0.30 if i == 0 else 0.40 if i == 1 else 0.30
+                for i in range(current_dca)
+            ])))  # Estimar quantidade original
+            additional_qty = original_qty * dca_size_pct
             
             symbol_info = await binance_client.get_symbol_info(trade.symbol)
             additional_qty = round_step_size(additional_qty, symbol_info['step_size'])
@@ -1017,10 +1147,11 @@ class PositionMonitor:
                         "type": "STOP_MARKET",
                         "stopPrice": sl_price,
                         "quantity": total_qty,
-                        "reduceOnly": True,
                         "workingType": working_type
                     }
-                    if position_side:
+                    # Em One-Way mode, reduceOnly pode causar erro -1106
+                    # STOP_MARKET já fecha posição implicitamente
+                    if position_side and position_side != "BOTH":
                         sl_params["positionSide"] = position_side
                     await asyncio.to_thread(
                         self.client.futures_create_order,
@@ -1057,15 +1188,20 @@ class PositionMonitor:
         db: SessionLocal
     ) -> bool:
         """
-        ✅ NOVO v5.0: Time-Based Exit
-        Fecha posição se segurada por muito tempo com pouco lucro.
+        ✅ MELHORIA #10: Time-Based Exit
+        Fecha posição estagnada há muito tempo em prejuízo leve.
+        Condições: >6h aberta E P&L entre -2% e -5%
         """
 
         if self._skip_action_if_not_whitelisted(trade.symbol, "time_exit"):
             return False
-        
+
+        if not getattr(self.settings, "TIME_EXIT_ENABLED", True):
+            return False
+
         max_hours = int(getattr(self.settings, "TIME_EXIT_HOURS", 6))
-        min_profit = float(getattr(self.settings, "TIME_EXIT_MIN_PROFIT_PCT", 0.5))
+        min_pnl = float(getattr(self.settings, "TIME_EXIT_MIN_PNL_PCT", -2.0))
+        max_pnl = float(getattr(self.settings, "TIME_EXIT_MAX_PNL_PCT", -5.0))
         
         # Calcular tempo de hold
         if not trade.opened_at:
@@ -1079,12 +1215,12 @@ class PositionMonitor:
         hold_hours = hold_duration.total_seconds() / 3600
         
         if hold_hours > max_hours:
-            # Se lucro for menor que o mínimo aceitável para tanto tempo
-            if pnl_percentage < min_profit:
+            # ✅ MELHORIA #10: Fechar se P&L entre -2% e -5% após >6h
+            if max_pnl <= pnl_percentage <= min_pnl:
                 logger.info(
-                    f"⌛ TIME EXIT: {trade.symbol} segurado por {hold_hours:.1f}h\n"
-                    f"  PnL {pnl_percentage:.2f}% < {min_profit}%\n"
-                    f"  Fechando posição estagnada..."
+                    f"⌛ TIME EXIT: {trade.symbol} estagnado por {hold_hours:.1f}h\n"
+                    f"  PnL {pnl_percentage:.2f}% entre {max_pnl}% e {min_pnl}%\n"
+                    f"  Fechando posição estagnada para liberar capital..."
                 )
                 
                 await self._close_position(

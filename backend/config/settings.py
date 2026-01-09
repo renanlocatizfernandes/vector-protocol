@@ -31,9 +31,10 @@ class Settings(BaseSettings):
     # BOT SETTINGS - OTIMIZADO PARA RECUPERAÇÃO (CONSERVADOR)
     # ============================================
     MAX_POSITIONS: int = 4  # Limite para 4 posições
-    RISK_PER_TRADE: float = 0.025  # 2.5% por trade (era 10%)
+    RISK_PER_TRADE: float = 0.014  # 1.4% por trade (reduzido 30% para liberar margem DCA)
     MAX_PORTFOLIO_RISK: float = 0.15  # 15% máximo em risco
     MAX_TOTAL_CAPITAL_USAGE: float = 0.90  # Fraction of total capital available
+    DCA_RESERVE_PCT: float = 0.20  # Reservar 20% do capital para DCA
     DEFAULT_LEVERAGE: int = 10  # 10x padrão (reduz margem requerida 50%)
     # Risco e spread (afinamento fino)
     SNIPER_RISK_PER_TRADE: float = 0.02  # 2% por sniper
@@ -100,15 +101,46 @@ class Settings(BaseSettings):
     # EXECUTION & RISK (v5.0)
     # ========================================
     
-    # Smart DCA
+    # Smart DCA - Multi-Level (Melhoria #3)
     DCA_ENABLED: bool = True
-    MAX_DCA_COUNT: int = 3  # Aumentado para 3
-    DCA_THRESHOLD_PCT: float = -2.0  # Trigger DCA at -2.0% PnL (mais cedo)
-    DCA_MULTIPLIER: float = 1.5  # Buy 1.5x the current size
+    MAX_DCA_COUNT: int = 3  # 3 níveis de DCA
+    # DCA Multi-Nível: Níveis progressivos de averaging
+    DCA_LEVEL_1_THRESHOLD_PCT: float = -3.0  # 1º DCA aos -3%
+    DCA_LEVEL_1_SIZE_PCT: float = 0.30  # Adicionar 30% da posição original
+    DCA_LEVEL_2_THRESHOLD_PCT: float = -6.0  # 2º DCA aos -6%
+    DCA_LEVEL_2_SIZE_PCT: float = 0.40  # Adicionar 40% da posição original
+    DCA_LEVEL_3_THRESHOLD_PCT: float = -10.0  # 3º DCA aos -10%
+    DCA_LEVEL_3_SIZE_PCT: float = 0.30  # Adicionar 30% da posição original
+    # Legacy (manter compatibilidade)
+    DCA_THRESHOLD_PCT: float = -3.0  # Fallback para código antigo
+    DCA_MULTIPLIER: float = 1.3  # Fallback
     
-    # Time-Based Exit
-    TIME_EXIT_HOURS: int = 4  # Close if held > 4h (mais rápido)
-    TIME_EXIT_MIN_PROFIT_PCT: float = 0.3  # And profit < 0.3% (stagnant)
+    # Time-Based Exit (Melhoria #10)
+    TIME_EXIT_ENABLED: bool = True
+    TIME_EXIT_HOURS: int = 6  # Fechar se aberta > 6h
+    TIME_EXIT_MIN_PNL_PCT: float = -2.0  # P&L mínimo para exit: -2%
+    TIME_EXIT_MAX_PNL_PCT: float = -5.0  # P&L máximo para exit: -5%
+    TIME_EXIT_MIN_PROFIT_PCT: float = 0.3  # Legacy
+
+    # Take Profit Ladder (Melhoria #4)
+    TP_LADDER_ENABLED: bool = True
+    TP_LADDER_LEVEL_1_PCT: float = 20.0  # 1º TP aos +20%
+    TP_LADDER_LEVEL_1_SIZE: float = 0.30  # Realizar 30% da posição
+    TP_LADDER_LEVEL_2_PCT: float = 40.0  # 2º TP aos +40%
+    TP_LADDER_LEVEL_2_SIZE: float = 0.30  # Realizar mais 30%
+    TP_LADDER_LEVEL_3_PCT: float = 60.0  # 3º TP aos +60%
+    TP_LADDER_LEVEL_3_SIZE: float = 0.40  # Realizar 40% restante
+
+    # Breakeven Rápido (Melhoria #6)
+    BREAKEVEN_ENABLED: bool = True
+    BREAKEVEN_THRESHOLD_PCT: float = 8.0  # Mover SL para breakeven aos +8% (era +15%)
+
+    # Trailing Stop ATR-Based (Melhoria #5)
+    TRAILING_STOP_ATR_ENABLED: bool = True
+    TRAILING_STOP_ACTIVATION_PCT: float = 15.0  # Ativar trailing aos +15%
+    TRAILING_STOP_ATR_MULTIPLIER: float = 2.0  # Callback = 2x ATR(14)
+    TRAILING_STOP_MIN_CALLBACK_PCT: float = 0.5  # Mínimo 0.5%
+    TRAILING_STOP_MAX_CALLBACK_PCT: float = 3.0  # Máximo 3.0%
     
     # Legacy settings (maintained for compatibility)
     PROD_MIN_SCORE: int = 30  # Reduzido para 30 (Ultra Aggressive)
@@ -137,6 +169,55 @@ class Settings(BaseSettings):
     # 🛑 HARD STOPS - Conservador
     DAILY_MAX_LOSS_PCT: float = 0.05  # 5% máximo de perda/dia
     INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.25  # 25% drawdown intraday
+
+    # Circuit Breaker (Melhoria #8/#14)
+    CIRCUIT_BREAKER_ENABLED: bool = True
+    CIRCUIT_BREAKER_DAILY_LOSS_PCT: float = 5.0  # Parar se perder 5% do capital no dia
+    CIRCUIT_BREAKER_CONSECUTIVE_LOSSES: int = 3  # Parar após 3 stops consecutivos
+    CIRCUIT_BREAKER_COOLDOWN_HOURS: int = 2  # Aguardar 2h antes de retomar
+    CIRCUIT_BREAKER_RESET_UTC_HOUR: int = 0  # Reset automático às 00:00 UTC
+
+    # Whitelist Dinâmica (Melhoria #7)
+    DYNAMIC_WHITELIST_ENABLED: bool = True
+    DYNAMIC_WHITELIST_MIN_VOLUME_24H: float = 500_000_000  # $500M volume mínimo
+    DYNAMIC_WHITELIST_MIN_LIQUIDITY: float = 1_000_000  # $1M order book 5% depth
+    DYNAMIC_WHITELIST_MAX_SPREAD_BPS: float = 10.0  # Max 10 bps spread
+    DYNAMIC_WHITELIST_ALLOW_SCORE_100: bool = True  # Permitir top 3 sinais score 100/dia fora whitelist
+    DYNAMIC_WHITELIST_MAX_SCORE_100_PER_DAY: int = 3  # Máximo 3 sinais score 100 fora whitelist/dia
+
+    # Anti-Correlação (Melhoria #9)
+    ANTI_CORRELATION_ENABLED: bool = True
+    ANTI_CORRELATION_MAX_SAME_SECTOR: int = 2  # Máximo 2 posições do mesmo setor
+    ANTI_CORRELATION_PRICE_THRESHOLD: float = 0.7  # Correlação de preço > 0.7 = setor correlacionado
+    # Categorias de setores
+    SECTOR_L1: list[str] = ["ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT", "AVAXUSDT", "DOTUSDT"]
+    SECTOR_DEFI: list[str] = ["AAVEUSDT", "UNIUSDT", "CRVUSDT", "PENDLEUSDT", "LINKUSDT"]
+    SECTOR_MEME: list[str] = ["1000PEPEUSDT", "1000BONKUSDT", "DOGEUSDT", "SHIBUSDT", "FLOKIUSDT"]
+    SECTOR_AI: list[str] = ["FETUSDT", "RENDERUSDT", "AGIXUSDT", "TAOUSDT"]
+
+    # Hedge em Downturn (Melhoria #11)
+    HEDGE_ENABLED: bool = True
+    HEDGE_TRIGGER_NEGATIVE_PCT: float = 60.0  # Hedge quando >60% posições negativas
+    HEDGE_SIZE_PCT: float = 30.0  # Hedge = 30% do valor total do portfólio
+    HEDGE_SYMBOLS: list[str] = ["BTCUSDT", "ETHUSDT"]  # Símbolos para hedge SHORT
+    HEDGE_EXIT_NEGATIVE_PCT: float = 40.0  # Fechar hedge quando <40% posições negativas
+
+    # Stop Loss ATR Dinâmico (Melhoria #12)
+    SL_ATR_ENABLED: bool = True
+    SL_ATR_MULTIPLIER: float = 2.0  # SL = 2x ATR(14)
+    SL_ATR_PERIOD: int = 14  # Período ATR
+    SL_ATR_MIN_DISTANCE_PCT: float = 1.0  # Mínimo 1% de distância
+    SL_ATR_MAX_DISTANCE_PCT: float = 8.0  # Máximo 8% de distância
+
+    # Margem Híbrida (Melhoria #15)
+    HYBRID_MARGIN_ENABLED: bool = True
+    HYBRID_MARGIN_CROSS_MIN_SCORE: int = 85  # Usar margem cruzada para score >= 85
+    HYBRID_MARGIN_ISOLATED_MAX_SCORE: int = 84  # Usar margem isolada para score <= 84
+
+    # Priorização por Score (Melhoria #8)
+    SCORE_PRIORITY_ENABLED: bool = True
+    SCORE_PRIORITY_MIN_REPLACEMENT: int = 75  # Score 100 pode substituir posições score < 75
+    SCORE_PRIORITY_MAX_LOSS_PCT: float = -2.0  # Somente se P&L < -2%
 
     # ========================================
     # SIGNAL GENERATOR - Advanced Filters (v5.0)

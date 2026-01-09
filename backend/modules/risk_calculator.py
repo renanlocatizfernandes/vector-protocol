@@ -147,14 +147,20 @@ class RiskCalculator:
             # ✅ NOVO: Verificar se já estamos no limite de 60%
             total_margin_used = open_positions_margin
             available_capital = account_balance * self.max_total_capital_usage
-            
-            if total_margin_used >= available_capital:
+
+            # ✅ MELHORIA #2: Reservar margem para DCA
+            settings = get_settings()
+            dca_reserve_pct = getattr(settings, 'DCA_RESERVE_PCT', 0.20)
+            dca_reserved = account_balance * dca_reserve_pct
+            available_capital_for_entry = available_capital - dca_reserved
+
+            if total_margin_used >= available_capital_for_entry:
                 return {
                     'approved': False,
-                    'reason': f'Limite global de capital atingido ({self.max_total_capital_usage*100:.0f}%)'
+                    'reason': f'Limite global atingido (reservando {dca_reserve_pct*100:.0f}% para DCA)'
                 }
-            
-            remaining_capital = available_capital - total_margin_used
+
+            remaining_capital = available_capital_for_entry - total_margin_used
             
             logger.info(
                 f"💰 Capital disponível: {remaining_capital:.2f} USDT "
