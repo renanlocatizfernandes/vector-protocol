@@ -386,15 +386,40 @@ class OrderExecutor:
             
             # ================================
             # 4. Política de MARGEM (Cross/Isolated)
-            #   - Padrão: DEFAULT_MARGIN_CROSSED
-            #   - Auto-Isolate: quando leverage >= AUTO_ISOLATE_MIN_LEVERAGE
+            #   ✅ Phase 2 - Melhoria #15: Margem Híbrida por Score
+            #   - Score >= 85: CROSSED (mais agressivo)
+            #   - Score <= 84: ISOLATED (mais seguro)
+            #   - Fallback: DEFAULT_MARGIN_CROSSED + Auto-Isolate por leverage
             # ================================
-            desired_isolated = not self.default_margin_crossed
-            try:
-                if float(signal.get('leverage', 0) or 0) >= float(self.auto_isolate_min_leverage):
-                    desired_isolated = True
-            except Exception:
-                pass
+            hybrid_margin_enabled = getattr(self.settings, "HYBRID_MARGIN_ENABLED", False)
+
+            if hybrid_margin_enabled:
+                # Melhoria #15: Score-based margin selection
+                signal_score = float(signal.get('score', 0) or 0)
+                cross_min_score = float(getattr(self.settings, "HYBRID_MARGIN_CROSS_MIN_SCORE", 85))
+                isolated_max_score = float(getattr(self.settings, "HYBRID_MARGIN_ISOLATED_MAX_SCORE", 84))
+
+                if signal_score >= cross_min_score:
+                    desired_isolated = False  # CROSSED para high confidence
+                    margin_reason = f"score {signal_score:.0f} >= {cross_min_score}"
+                elif signal_score <= isolated_max_score:
+                    desired_isolated = True  # ISOLATED para low confidence
+                    margin_reason = f"score {signal_score:.0f} <= {isolated_max_score}"
+                else:
+                    # Zona intermediária: usar lógica legada
+                    desired_isolated = not self.default_margin_crossed
+                    margin_reason = "score intermediário"
+
+                logger.info(f"🧮 Margem Híbrida: {'ISOLATED' if desired_isolated else 'CROSSED'} ({margin_reason})")
+            else:
+                # Lógica legada (original)
+                desired_isolated = not self.default_margin_crossed
+                try:
+                    if float(signal.get('leverage', 0) or 0) >= float(self.auto_isolate_min_leverage):
+                        desired_isolated = True
+                except Exception:
+                    pass
+
             planned_margin_txt = "ISOLATED" if desired_isolated else "CROSSED"
 
             # ================================

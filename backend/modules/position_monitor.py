@@ -117,6 +117,131 @@ class PositionMonitor:
         """Para monitoramento"""
         self.monitoring = False
         logger.info("Monitoramento parado")
+
+    async def _check_hedge_opportunity(self, db: SessionLocal) -> bool:
+        """
+        ✅ MELHORIA #11: Hedge em Market Downturn
+
+        Abre hedge SHORT quando >60% das posições estão negativas
+        Fecha hedge quando <40% das posições estão negativas
+
+        Returns: True se ação foi tomada
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'HEDGE_ENABLED', False):
+            return False
+
+        from api.models.trades import Trade
+
+        try:
+            # Buscar posições abertas
+            open_trades = db.query(Trade).filter(Trade.status == 'open').all()
+
+            if not open_trades:
+                return False
+
+            # Contar posições negativas
+            negative_count = sum(1 for t in open_trades if (t.pnl_percentage or 0) < 0)
+            total_count = len(open_trades)
+            negative_pct = (negative_count / total_count) * 100 if total_count > 0 else 0
+
+            # Verificar se existe hedge ativo
+            hedge_symbols = getattr(settings, 'HEDGE_SYMBOLS', ['BTCUSDT', 'ETHUSDT'])
+            hedge_active = any(
+                t.symbol in hedge_symbols and t.direction == 'SHORT'
+                for t in open_trades
+            )
+
+            trigger_pct = float(getattr(settings, 'HEDGE_TRIGGER_NEGATIVE_PCT', 60.0))
+            exit_pct = float(getattr(settings, 'HEDGE_EXIT_NEGATIVE_PCT', 40.0))
+
+            # Trigger: Abrir hedge
+            if not hedge_active and negative_pct >= trigger_pct:
+                logger.warning(
+                    f"⚠️ HEDGE TRIGGER: {negative_pct:.1f}% posições negativas ({negative_count}/{total_count})\n"
+                    f"  Abrindo hedge SHORT..."
+                )
+
+                # Calcular tamanho do hedge
+                balance_info = await binance_client.get_account_balance()
+                total_balance = float(balance_info.get('total_balance', 0)) if balance_info else 0
+                hedge_size_pct = float(getattr(settings, 'HEDGE_SIZE_PCT', 30.0)) / 100.0
+                hedge_notional = total_balance * hedge_size_pct
+
+                # Abrir SHORT em BTC ou ETH (primeiro da lista)
+                hedge_symbol = hedge_symbols[0]
+
+                try:
+                    # Buscar preço e symbol info
+                    current_price = await binance_client.get_symbol_price(hedge_symbol)
+                    symbol_info = await binance_client.get_symbol_info(hedge_symbol)
+
+                    # Calcular quantidade
+                    leverage = 3  # Hedge com baixa alavancagem
+                    hedge_qty = hedge_notional * leverage / current_price
+                    hedge_qty = round_step_size(hedge_qty, symbol_info['step_size'])
+
+                    # Executar ordem SHORT
+                    order = await asyncio.to_thread(
+                        self.client.futures_create_order,
+                        symbol=hedge_symbol,
+                        side='SELL',
+                        type='MARKET',
+                        quantity=hedge_qty
+                    )
+
+                    logger.info(
+                        f"✅ HEDGE OPENED: {hedge_symbol} SHORT {hedge_qty} @ {current_price}\n"
+                        f"  Notional: ${hedge_notional:.2f}, Leverage: {leverage}x"
+                    )
+
+                    try:
+                        from modules.telegram_notifier import telegram_notifier
+                        await telegram_notifier.send_message(
+                            f"🛡️ Hedge Ativado\n"
+                            f"{hedge_symbol} SHORT {hedge_qty}\n"
+                            f"{negative_pct:.1f}% posições negativas"
+                        )
+                    except:
+                        pass
+
+                    return True
+
+                except Exception as e:
+                    logger.error(f"❌ Erro ao abrir hedge: {e}")
+                    return False
+
+            # Exit: Fechar hedge
+            elif hedge_active and negative_pct <= exit_pct:
+                logger.info(
+                    f"✅ HEDGE EXIT: {negative_pct:.1f}% posições negativas ({negative_count}/{total_count})\n"
+                    f"  Fechando hedge SHORT..."
+                )
+
+                # Buscar trade do hedge
+                hedge_trade = next(
+                    (t for t in open_trades if t.symbol in hedge_symbols and t.direction == 'SHORT'),
+                    None
+                )
+
+                if hedge_trade:
+                    try:
+                        current_price = await binance_client.get_symbol_price(hedge_trade.symbol)
+                        await self._close_position(
+                            hedge_trade,
+                            current_price,
+                            reason="Hedge Exit (market recovery)",
+                            db=db
+                        )
+                        return True
+                    except Exception as e:
+                        logger.error(f"❌ Erro ao fechar hedge: {e}")
+
+        except Exception as e:
+            logger.error(f"Error in hedge check: {e}")
+
+        return False
     
     async def _monitor_loop(self):
         """Loop principal de monitoramento"""

@@ -70,6 +70,219 @@ class AutonomousBot:
         self._whitelist_block_cache = {}
         self._whitelist_block_cache_ttl = 300
 
+        # ✅ MELHORIA #14: Circuit Breaker State
+        self._circuit_breaker_active = False
+        self._circuit_breaker_activated_at = None
+        self._consecutive_losses = 0
+        self._daily_start_balance = None
+        self._daily_loss_pct = 0.0
+
+        # ✅ MELHORIA #9: Anti-Correlation Tracking
+        self._sector_positions = {}  # {sector: [symbols]}
+
+        logger.info("✅ Phase 2 improvements initialized: Circuit Breaker, Score Priority, Anti-Correlation")
+
+    def _get_symbol_sector(self, symbol: str) -> str:
+        """
+        ✅ MELHORIA #9: Determina o setor do símbolo
+        Returns: 'L1', 'DEFI', 'MEME', 'AI', 'OTHER'
+        """
+        settings = get_settings()
+
+        l1_symbols = getattr(settings, 'SECTOR_L1', [])
+        if symbol in l1_symbols:
+            return 'L1'
+
+        defi_symbols = getattr(settings, 'SECTOR_DEFI', [])
+        if symbol in defi_symbols:
+            return 'DEFI'
+
+        meme_symbols = getattr(settings, 'SECTOR_MEME', [])
+        if symbol in meme_symbols:
+            return 'MEME'
+
+        ai_symbols = getattr(settings, 'SECTOR_AI', [])
+        if symbol in ai_symbols:
+            return 'AI'
+
+        return 'OTHER'
+
+    def _check_anti_correlation(self, symbol: str) -> bool:
+        """
+        ✅ MELHORIA #9: Anti-Correlação - Limita posições do mesmo setor
+
+        Returns: True se pode abrir, False se setor já está cheio
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'ANTI_CORRELATION_ENABLED', False):
+            return True
+
+        sector = self._get_symbol_sector(symbol)
+        max_same_sector = int(getattr(settings, 'ANTI_CORRELATION_MAX_SAME_SECTOR', 2))
+
+        # Contar posições no mesmo setor
+        sector_count = len(self._sector_positions.get(sector, []))
+
+        if sector_count >= max_same_sector:
+            logger.warning(
+                f"⚠️ ANTI-CORRELATION: {symbol} bloqueado\n"
+                f"  Setor {sector} já tem {sector_count}/{max_same_sector} posições: "
+                f"{self._sector_positions.get(sector, [])}"
+            )
+            return False
+
+        return True
+
+    def _update_sector_positions(self, db):
+        """
+        ✅ MELHORIA #9: Atualiza tracking de posições por setor
+        """
+        from api.models.trades import Trade
+
+        try:
+            open_trades = db.query(Trade).filter(Trade.status == 'open').all()
+            self._sector_positions = {}
+
+            for trade in open_trades:
+                sector = self._get_symbol_sector(trade.symbol)
+                if sector not in self._sector_positions:
+                    self._sector_positions[sector] = []
+                self._sector_positions[sector].append(trade.symbol)
+
+            logger.debug(f"Sector positions updated: {self._sector_positions}")
+        except Exception as e:
+            logger.error(f"Error updating sector positions: {e}")
+
+    def _check_circuit_breaker(self, db) -> bool:
+        """
+        ✅ MELHORIA #14: Circuit Breaker - Para bot após perdas excessivas
+
+        Triggers:
+        1. Drawdown diário > 5%
+        2. 3 stops loss consecutivos
+
+        Returns: True se circuit breaker ATIVO (não pode operar)
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'CIRCUIT_BREAKER_ENABLED', False):
+            return False
+
+        # Verificar se já está em cooldown
+        if self._circuit_breaker_active:
+            cooldown_hours = int(getattr(settings, 'CIRCUIT_BREAKER_COOLDOWN_HOURS', 2))
+            if self._circuit_breaker_activated_at:
+                elapsed = (datetime.now() - self._circuit_breaker_activated_at).total_seconds() / 3600
+                if elapsed < cooldown_hours:
+                    logger.warning(
+                        f"🔴 CIRCUIT BREAKER ACTIVE: Cooldown {cooldown_hours - elapsed:.1f}h remaining"
+                    )
+                    return True
+                else:
+                    logger.info("✅ Circuit Breaker cooldown finished, resuming operations")
+                    self._circuit_breaker_active = False
+                    self._circuit_breaker_activated_at = None
+
+        # Trigger 1: Drawdown diário
+        try:
+            from utils.binance_client import binance_client
+            balance_info = asyncio.run(binance_client.get_account_balance())
+            current_balance = float(balance_info.get('total_balance', 0)) if balance_info else 0
+
+            # Inicializar balance do dia
+            if self._daily_start_balance is None:
+                self._daily_start_balance = current_balance
+
+            # Reset à meia-noite
+            reset_hour = int(getattr(settings, 'CIRCUIT_BREAKER_RESET_UTC_HOUR', 0))
+            if datetime.utcnow().hour == reset_hour and datetime.utcnow().minute < 5:
+                self._daily_start_balance = current_balance
+                self._daily_loss_pct = 0.0
+                self._consecutive_losses = 0
+
+            if self._daily_start_balance and self._daily_start_balance > 0:
+                self._daily_loss_pct = ((current_balance - self._daily_start_balance) / self._daily_start_balance) * 100
+                max_daily_loss = float(getattr(settings, 'CIRCUIT_BREAKER_DAILY_LOSS_PCT', 5.0))
+
+                if self._daily_loss_pct <= -max_daily_loss:
+                    logger.error(
+                        f"🔴 CIRCUIT BREAKER TRIGGERED: Daily loss {self._daily_loss_pct:.2f}% >= {max_daily_loss}%\n"
+                        f"  Start: ${self._daily_start_balance:.2f}, Current: ${current_balance:.2f}\n"
+                        f"  Pausing operations for {getattr(settings, 'CIRCUIT_BREAKER_COOLDOWN_HOURS', 2)}h"
+                    )
+                    self._circuit_breaker_active = True
+                    self._circuit_breaker_activated_at = datetime.now()
+                    return True
+        except Exception as e:
+            logger.error(f"Error checking daily drawdown: {e}")
+
+        # Trigger 2: Stops consecutivos
+        max_consecutive = int(getattr(settings, 'CIRCUIT_BREAKER_CONSECUTIVE_LOSSES', 3))
+        if self._consecutive_losses >= max_consecutive:
+            logger.error(
+                f"🔴 CIRCUIT BREAKER TRIGGERED: {self._consecutive_losses} consecutive losses\n"
+                f"  Pausing operations for {getattr(settings, 'CIRCUIT_BREAKER_COOLDOWN_HOURS', 2)}h"
+            )
+            self._circuit_breaker_active = True
+            self._circuit_breaker_activated_at = datetime.now()
+            return True
+
+        return False
+
+    def _on_trade_closed(self, trade, is_win: bool):
+        """
+        ✅ MELHORIA #14: Tracking de losses consecutivos para circuit breaker
+        """
+        if is_win:
+            self._consecutive_losses = 0
+        else:
+            self._consecutive_losses += 1
+            logger.warning(f"⚠️ Consecutive losses: {self._consecutive_losses}")
+
+    def _can_replace_position(self, new_score: int, db) -> tuple[bool, str]:
+        """
+        ✅ MELHORIA #8: Priorização por Score
+
+        Score 100 pode substituir posições score < 75 em prejuízo < -2%
+
+        Returns: (can_replace, symbol_to_replace or None)
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'SCORE_PRIORITY_ENABLED', False):
+            return (False, None)
+
+        # Só considerar se novo sinal é score 100
+        if new_score < 100:
+            return (False, None)
+
+        from api.models.trades import Trade
+
+        try:
+            # Buscar posições abertas com score baixo e em prejuízo
+            min_replacement_score = int(getattr(settings, 'SCORE_PRIORITY_MIN_REPLACEMENT', 75))
+            max_loss_pct = float(getattr(settings, 'SCORE_PRIORITY_MAX_LOSS_PCT', -2.0))
+
+            candidates = db.query(Trade).filter(
+                Trade.status == 'open',
+                Trade.score < min_replacement_score,
+                Trade.pnl_percentage < max_loss_pct
+            ).order_by(Trade.pnl_percentage).all()  # Pior primeiro
+
+            if candidates:
+                worst_trade = candidates[0]
+                logger.info(
+                    f"✨ SCORE PRIORITY: Score 100 signal can replace {worst_trade.symbol}\n"
+                    f"  Replace Score: {worst_trade.score}, P&L: {worst_trade.pnl_percentage:.2f}%"
+                )
+                return (True, worst_trade.symbol)
+
+        except Exception as e:
+            logger.error(f"Error checking position replacement: {e}")
+
+        return (False, None)
+
     def _whitelist_allows(self, symbol: str) -> bool:
         settings = get_settings()
         wl = [str(x).upper() for x in (getattr(settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]

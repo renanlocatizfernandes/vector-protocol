@@ -1065,36 +1065,61 @@ class SignalGenerator:
     def _calculate_stop_loss(self, df: pd.DataFrame, direction: str, entry_price: float) -> float:
         """
         Calcula Stop Loss dinâmico baseado em ATR (Chandelier Exit)
-        ✅ v5.0: Chandelier Exit (ATR Multiplier)
+        ✅ v6.0: Phase 2 - ATR Dinâmico com limites configuráveis
         """
         try:
             last_row = df.iloc[-1]
             atr = float(last_row['atr'])
-            
-            # Configurações (defaults se não houver no settings)
-            atr_multiplier = float(getattr(self.settings, "ATR_STOP_LOSS_MULTIPLIER", 3.0))
-            
+
+            # Melhoria #12: SL ATR Dinâmico com configurações Phase 2
+            sl_atr_enabled = getattr(self.settings, "SL_ATR_ENABLED", True)
+
+            if sl_atr_enabled:
+                # Usar configurações Phase 2
+                atr_multiplier = float(getattr(self.settings, "SL_ATR_MULTIPLIER", 2.0))
+                min_distance_pct = float(getattr(self.settings, "SL_ATR_MIN_DISTANCE_PCT", 1.0))
+                max_distance_pct = float(getattr(self.settings, "SL_ATR_MAX_DISTANCE_PCT", 8.0))
+            else:
+                # Fallback para configuração legada
+                atr_multiplier = float(getattr(self.settings, "ATR_STOP_LOSS_MULTIPLIER", 3.0))
+                min_distance_pct = 1.0
+                max_distance_pct = 10.0
+
             if direction == 'LONG':
-                # Chandelier Exit Long: Highest High (last N) - ATR * Mult
-                # Simplificação: Entry - ATR * Mult (para entrada imediata)
+                # Chandelier Exit Long: Entry - ATR * Multiplier
                 stop_loss = entry_price - (atr * atr_multiplier)
-                
-                # Guardrail: Max 10% loss
-                max_stop = entry_price * 0.90
-                if stop_loss < max_stop:
+
+                # Guardrails configuráveis (Phase 2)
+                min_stop = entry_price * (1 - max_distance_pct / 100)  # Ex: -8%
+                max_stop = entry_price * (1 - min_distance_pct / 100)  # Ex: -1%
+
+                if stop_loss < min_stop:
+                    stop_loss = min_stop
+                    logger.debug(f"SL ajustado para limite mínimo: {min_distance_pct}% = ${stop_loss:.4f}")
+                elif stop_loss > max_stop:
                     stop_loss = max_stop
-                    
+                    logger.debug(f"SL ajustado para limite máximo: {max_distance_pct}% = ${stop_loss:.4f}")
+
             else:  # SHORT
-                # Chandelier Exit Short: Lowest Low + ATR * Mult
+                # Chandelier Exit Short: Entry + ATR * Multiplier
                 stop_loss = entry_price + (atr * atr_multiplier)
-                
-                # Guardrail: Max 10% loss
-                max_stop = entry_price * 1.10
+
+                # Guardrails configuráveis (Phase 2)
+                max_stop = entry_price * (1 + max_distance_pct / 100)  # Ex: +8%
+                min_stop = entry_price * (1 + min_distance_pct / 100)  # Ex: +1%
+
                 if stop_loss > max_stop:
                     stop_loss = max_stop
-            
+                    logger.debug(f"SL ajustado para limite máximo: {max_distance_pct}% = ${stop_loss:.4f}")
+                elif stop_loss < min_stop:
+                    stop_loss = min_stop
+                    logger.debug(f"SL ajustado para limite mínimo: {min_distance_pct}% = ${stop_loss:.4f}")
+
+            sl_distance_pct = abs((stop_loss - entry_price) / entry_price * 100)
+            logger.info(f"✅ SL ATR calculado: ${stop_loss:.4f} (distância: {sl_distance_pct:.2f}%, ATR: {atr:.4f}, mult: {atr_multiplier}x)")
+
             return stop_loss
-            
+
         except Exception as e:
             logger.error(f"Erro ao calcular stop loss: {e}")
             # Fallback seguro

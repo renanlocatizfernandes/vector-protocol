@@ -114,6 +114,95 @@ class MarketScanner:
 
         return ranked
 
+    async def _apply_dynamic_whitelist(self, symbol: str, score: int = 0) -> bool:
+        """
+        ✅ MELHORIA #7: Whitelist Dinâmica
+
+        Permite símbolos fora da whitelist se:
+        1. Volume 24h > $500M
+        2. Liquidez (order book 5%) > $1M
+        3. Spread < 10 bps
+        4. OU Score = 100 (top 3/dia)
+
+        Returns: True se símbolo aprovado
+        """
+        s = self.settings
+
+        # Se whitelist dinâmica desabilitada, usar whitelist estática
+        if not getattr(s, "DYNAMIC_WHITELIST_ENABLED", False):
+            wl = [str(x).upper() for x in (getattr(s, "SYMBOL_WHITELIST", []) or [])]
+            return symbol in wl
+
+        # Verificar se já está na whitelist estática (sempre aprovar)
+        wl = [str(x).upper() for x in (getattr(s, "SYMBOL_WHITELIST", []) or [])]
+        if symbol in wl:
+            return True
+
+        # ✅ EXCEÇÃO: Score 100 (permitir top 3/dia)
+        if score == 100 and getattr(s, "DYNAMIC_WHITELIST_ALLOW_SCORE_100", True):
+            # Verificar limite diário
+            if not hasattr(self, '_score_100_count'):
+                self._score_100_count = {}
+                self._score_100_date = datetime.now().date()
+
+            # Reset contador à meia-noite
+            if datetime.now().date() != self._score_100_date:
+                self._score_100_count = {}
+                self._score_100_date = datetime.now().date()
+
+            max_per_day = int(getattr(s, "DYNAMIC_WHITELIST_MAX_SCORE_100_PER_DAY", 3))
+            current_count = len(self._score_100_count)
+
+            if current_count < max_per_day:
+                self._score_100_count[symbol] = datetime.now()
+                logger.info(f"✨ SCORE 100 EXCEPTION: {symbol} approved ({current_count + 1}/{max_per_day} today)")
+                return True
+            elif symbol in self._score_100_count:
+                # Já foi aprovado hoje
+                return True
+
+        try:
+            # Critério 1: Volume 24h
+            ticker = await asyncio.to_thread(self.client.futures_ticker, symbol=symbol)
+            volume_24h = float(ticker.get('quoteVolume', 0))
+            min_volume = float(getattr(s, "DYNAMIC_WHITELIST_MIN_VOLUME_24H", 500_000_000))
+
+            if volume_24h < min_volume:
+                logger.debug(f"❌ {symbol}: Volume {volume_24h/1e6:.1f}M < {min_volume/1e6:.0f}M required")
+                return False
+
+            # Critério 2: Spread
+            order_book = await asyncio.to_thread(self.client.futures_order_book, symbol=symbol, limit=5)
+            if order_book and order_book.get('bids') and order_book.get('asks'):
+                best_bid = float(order_book['bids'][0][0])
+                best_ask = float(order_book['asks'][0][0])
+                spread_bps = ((best_ask - best_bid) / best_bid) * 10000
+                max_spread = float(getattr(s, "DYNAMIC_WHITELIST_MAX_SPREAD_BPS", 10.0))
+
+                if spread_bps > max_spread:
+                    logger.debug(f"❌ {symbol}: Spread {spread_bps:.2f} bps > {max_spread} bps")
+                    return False
+
+            # Critério 3: Liquidez (order book depth 5%)
+            # Simplificado: verificar se há volume suficiente nos primeiros níveis
+            total_bid_liquidity = sum([float(b[1]) * float(b[0]) for b in order_book['bids'][:20]])
+            min_liquidity = float(getattr(s, "DYNAMIC_WHITELIST_MIN_LIQUIDITY", 1_000_000))
+
+            if total_bid_liquidity < min_liquidity:
+                logger.debug(f"❌ {symbol}: Liquidity ${total_bid_liquidity/1e3:.0f}K < ${min_liquidity/1e6:.1f}M")
+                return False
+
+            logger.info(
+                f"✅ DYNAMIC WHITELIST: {symbol} approved\n"
+                f"  Volume: ${volume_24h/1e6:.1f}M, Spread: {spread_bps:.2f} bps, "
+                f"Liquidity: ${total_bid_liquidity/1e6:.2f}M"
+            )
+            return True
+
+        except Exception as e:
+            logger.debug(f"Error checking dynamic whitelist for {symbol}: {e}")
+            return False
+
     async def _validate_symbol_price(self, symbol: str, sem: asyncio.Semaphore) -> Optional[str]:
         """
         Valida se o símbolo possui preço (evita símbolos inválidos no TESTNET).
