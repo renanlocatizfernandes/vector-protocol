@@ -209,11 +209,13 @@ export default function Markets() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Market</span>
-          <h1 className="text-3xl font-semibold text-white mt-2">Market Overview</h1>
-          <p className="text-muted-foreground mt-1">
-            Top movers, volume leaders, and favorites (USDT futures).
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+            <h1 className="text-3xl font-bold text-gray-900">Visão Geral do Mercado</h1>
+          </div>
+          <p className="text-gray-600 ml-4">
+            Principais moedores, líderes de volume e favoritos (futuros USDT).
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -225,8 +227,8 @@ export default function Markets() {
         </div>
       </div>
 
-      <Card className="glass-card border-white/10 bg-white/5">
-        <CardHeader className="border-b border-white/10">
+      <Card className="elevated-card border-gray-200 bg-gray-50">
+        <CardHeader className="border-b border-gray-200">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="flex flex-wrap gap-2">
               {TABS.map((t) => (
@@ -237,7 +239,7 @@ export default function Markets() {
                   onClick={() => setTab(t.key)}
                   className={cn(
                     "h-8 px-4 text-xs",
-                    tab === t.key ? "bg-primary text-dark-950" : "border-white/10 hover:bg-white/5"
+                    tab === t.key ? "bg-primary text-dark-950" : "border-gray-200 hover:bg-gray-50"
                   )}
                 >
                   {t.label}
@@ -249,32 +251,32 @@ export default function Markets() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search symbol"
-                className="h-9 text-sm bg-dark-950/60 border-white/10"
+                className="h-9 text-sm bg-white border-gray-200"
               />
             </div>
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4 border-b border-white/5">
           <div className="lg:col-span-1 flex flex-col gap-4 p-4">
-            <div className="rounded-xl border border-white/10 bg-dark-950/40 p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Market Breadth
               </div>
               <div className="mt-3 flex items-center justify-between">
                 <div>
-                  <div className="text-2xl font-semibold text-success">
+                  <div className="text-2xl font-semibold text-green-600">
                     {breadth.up}
                   </div>
                   <div className="text-xs text-muted-foreground">Up</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-semibold text-danger">
+                  <div className="text-2xl font-semibold text-red-600">
                     {breadth.down}
                   </div>
                   <div className="text-xs text-muted-foreground">Down</div>
                 </div>
               </div>
-              <div className="mt-4 h-2 w-full rounded-full bg-white/10 overflow-hidden">
+              <div className="mt-4 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
                 <div
                   className="h-full bg-success"
                   style={{ width: `${breadth.upPct}%` }}
@@ -284,7 +286,7 @@ export default function Markets() {
                 {breadth.upPct.toFixed(1)}% up / {breadth.downPct.toFixed(1)}% down
               </div>
             </div>
-            <div className="rounded-xl border border-white/10 bg-dark-950/40 p-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4">
               <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                 Change Distribution
               </div>
@@ -295,7 +297,7 @@ export default function Markets() {
                   return (
                     <div key={bucket.label} className="flex items-center gap-2 text-xs">
                       <span className="w-14 text-muted-foreground">{bucket.label}</span>
-                      <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+                      <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
                         <div
                           className={cn("h-full", isPositive ? "bg-success/70" : "bg-danger/70")}
                           style={{ width: `${pct}%` }}
@@ -309,13 +311,13 @@ export default function Markets() {
             </div>
           </div>
           <div className="lg:col-span-2 p-4">
-            <div className="h-full rounded-xl border border-white/10 bg-dark-950/40 p-4">
+            <div className="h-full rounded-xl border border-gray-200 bg-white p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                     Fear & Greed Index
                   </div>
-                  <div className="mt-2 text-3xl font-semibold text-white">
+                  <div className="mt-2 text-3xl font-semibold text-gray-900">
                     {fearGreed?.latest?.value ?? "--"}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -357,12 +359,12 @@ export default function Markets() {
         </CardContent>
         <CardContent className="p-0">
           {error ? (
-            <div className="p-6 text-sm text-danger">{error}</div>
+            <div className="p-6 text-sm text-red-600">{error}</div>
           ) : (
             <div className="max-h-[600px] overflow-auto">
               <Table>
-                <TableHeader className="bg-white/5">
-                  <TableRow className="border-white/10">
+                <TableHeader className="bg-gray-50">
+                  <TableRow className="border-gray-200">
                     <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Symbol</TableHead>
                     <TableHead className="text-xs uppercase tracking-wider text-muted-foreground">Grade</TableHead>
                     <TableHead className="text-xs uppercase tracking-wider text-muted-foreground text-right">Price</TableHead>
@@ -383,17 +385,17 @@ export default function Markets() {
                       const grade = gradeFromChange(t.price_change_percent);
                       const positive = t.price_change_percent >= 0;
                       return (
-                        <TableRow key={t.symbol} className="border-white/10 hover:bg-white/5 transition-colors">
-                          <TableCell className="font-mono font-semibold text-white">{t.symbol}</TableCell>
+                        <TableRow key={t.symbol} className="border-gray-200 hover:bg-gray-50 transition-colors">
+                          <TableCell className="font-mono font-semibold text-gray-900">{t.symbol}</TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"
                               className={cn(
                                 "border-0 text-xs",
-                                grade.tone === "success" && "bg-success/15 text-success",
+                                grade.tone === "success" && "bg-success/15 text-green-600",
                                 grade.tone === "warning" && "bg-accent/15 text-accent",
-                                grade.tone === "danger" && "bg-danger/15 text-danger",
-                                grade.tone === "neutral" && "bg-white/10 text-muted-foreground"
+                                grade.tone === "danger" && "bg-danger/15 text-red-600",
+                                grade.tone === "neutral" && "bg-gray-100 text-muted-foreground"
                               )}
                             >
                               {grade.label}
@@ -404,7 +406,7 @@ export default function Markets() {
                             <span
                               className={cn(
                                 "inline-flex items-center gap-1 font-mono text-sm",
-                                positive ? "text-success" : "text-danger"
+                                positive ? "text-green-600" : "text-red-600"
                               )}
                             >
                               {positive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}

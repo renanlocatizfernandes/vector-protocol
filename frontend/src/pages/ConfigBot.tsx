@@ -102,10 +102,10 @@ export default function ConfigBot() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="h-10 w-1/3 bg-white/5 animate-pulse rounded-md"></div>
+        <div className="h-10 w-1/3 bg-gray-50 animate-pulse rounded-md"></div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="h-64 bg-white/5 animate-pulse rounded-xl"></div>
-          <div className="h-64 bg-white/5 animate-pulse rounded-xl"></div>
+          <div className="h-64 bg-gray-50 animate-pulse rounded-xl"></div>
+          <div className="h-64 bg-gray-50 animate-pulse rounded-xl"></div>
         </div>
       </div>
     );
@@ -115,22 +115,24 @@ export default function ConfigBot() {
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* HERO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="space-y-2">
-          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Control Room</span>
-          <h1 className="text-3xl font-semibold text-white">Bot Configuration</h1>
-          <p className="text-muted-foreground">Adjust runtime controls and keep the strategy aligned.</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+            <h1 className="text-3xl font-bold text-gray-900">Configuração do Bot</h1>
+          </div>
+          <p className="text-gray-600 ml-4">Ajuste controles em tempo real e mantenha a estratégia alinhada.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className={cn(
             "px-3 py-1.5 rounded-full border text-xs font-bold flex items-center gap-2",
             bot?.running
-              ? "bg-success/10 text-success border-success/20"
-              : "bg-danger/10 text-danger border-danger/20"
+              ? "bg-success/10 text-green-600 border-success/20"
+              : "bg-danger/10 text-red-600 border-danger/20"
           )}>
             <div className={cn("h-2 w-2 rounded-full", bot?.running ? "bg-success animate-pulse" : "bg-danger")} />
             {bot?.running ? "ENGINE ONLINE" : "ENGINE OFFLINE"}
           </div>
-          <Button variant="outline" size="sm" onClick={onTestTelegram} disabled={busy} className="border-white/10 hover:bg-white/5">
+          <Button variant="outline" size="sm" onClick={onTestTelegram} disabled={busy} className="border-gray-200 hover:bg-gray-50">
             <Send className="mr-2 h-4 w-4" /> Test Telegram
           </Button>
         </div>
@@ -143,8 +145,8 @@ export default function ConfigBot() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         {/* Runtime Config */}
-        <Card className="glass-card border-primary/20 bg-white/5 shadow-[0_0_30px_rgba(42,212,198,0.12)]">
-          <CardHeader className="border-b border-white/10 pb-4">
+        <Card className="elevated-card border-primary/20 bg-gray-50 shadow-[0_0_30px_rgba(42,212,198,0.12)]">
+          <CardHeader className="border-b border-gray-200 pb-4">
             <CardTitle className="flex items-center gap-2 text-primary">
               <Sliders className="h-5 w-5" /> Runtime Configuration
             </CardTitle>
@@ -152,11 +154,11 @@ export default function ConfigBot() {
           </CardHeader>
           <CardContent className="space-y-6 pt-6">
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">Dry Run: {String(bot?.dry_run ?? "—")}</Badge>
-              <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">Current Score: {String(bot?.min_score ?? "—")}</Badge>
-              <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">Positions: {String(bot?.max_positions ?? "—")}</Badge>
-              <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">Scan: {bot?.scan_interval ? Math.round((bot?.scan_interval as number) / 60) + "m" : "—"}</Badge>
-              <Badge variant="outline" className="bg-white/5 text-muted-foreground border-white/10">Symbols: {bot?.symbols?.length ?? 0}</Badge>
+              <Badge variant="outline" className="bg-gray-50 text-muted-foreground border-gray-200">Dry Run: {String(bot?.dry_run ?? "—")}</Badge>
+              <Badge variant="outline" className="bg-gray-50 text-muted-foreground border-gray-200">Current Score: {String(bot?.min_score ?? "—")}</Badge>
+              <Badge variant="outline" className="bg-gray-50 text-muted-foreground border-gray-200">Positions: {String(bot?.max_positions ?? "—")}</Badge>
+              <Badge variant="outline" className="bg-gray-50 text-muted-foreground border-gray-200">Scan: {bot?.scan_interval ? Math.round((bot?.scan_interval as number) / 60) + "m" : "—"}</Badge>
+              <Badge variant="outline" className="bg-gray-50 text-muted-foreground border-gray-200">Symbols: {bot?.symbols?.length ?? 0}</Badge>
             </div>
 
             <div className="grid grid-cols-1 gap-5">
@@ -165,7 +167,7 @@ export default function ConfigBot() {
                   <Input
                     type="number"
                     min={1}
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary/50"
+                    className="pl-9 bg-gray-50 border-gray-200 focus:border-primary/50"
                     value={scanIntervalMin}
                     onChange={(e) => setScanIntervalMin(e.target.value === "" ? "" : Number(e.target.value))}
                   />
@@ -178,7 +180,7 @@ export default function ConfigBot() {
                     type="number"
                     min={0}
                     max={100}
-                    className="pl-9 bg-white/5 border-white/10 focus:border-primary/50"
+                    className="pl-9 bg-gray-50 border-gray-200 focus:border-primary/50"
                     value={minScore}
                     onChange={(e) => setMinScore(e.target.value === "" ? "" : Number(e.target.value))}
                   />
@@ -189,7 +191,7 @@ export default function ConfigBot() {
                 <Input
                   type="number"
                   min={1}
-                  className="bg-white/5 border-white/10 focus:border-primary/50"
+                  className="bg-gray-50 border-gray-200 focus:border-primary/50"
                   value={maxPositions}
                   onChange={(e) => setMaxPositions(e.target.value === "" ? "" : Number(e.target.value))}
                 />
@@ -198,7 +200,7 @@ export default function ConfigBot() {
                 <Input
                   type="text"
                   placeholder="HYPERUSDT,TURBOUSDT,BANANAUSDT"
-                  className="bg-white/5 border-white/10 focus:border-primary/50"
+                  className="bg-gray-50 border-gray-200 focus:border-primary/50"
                   value={symbolsCsv}
                   onChange={(e) => setSymbolsCsv(e.target.value)}
                 />
@@ -208,7 +210,7 @@ export default function ConfigBot() {
               </Field>
             </div>
 
-            <div className="pt-2 flex items-center justify-between border-t border-white/10 mt-4">
+            <div className="pt-2 flex items-center justify-between border-t border-gray-200 mt-4">
               <Button onClick={onSave} disabled={busy} className="px-6">
                 {busy ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
                 Apply Changes
@@ -217,7 +219,7 @@ export default function ConfigBot() {
               {msg && (
                 <div className={cn(
                   "flex items-center gap-2 text-sm font-medium animate-in slide-in-from-right-4",
-                  msg.kind === "ok" ? "text-success" : "text-danger"
+                  msg.kind === "ok" ? "text-green-600" : "text-red-600"
                 )}>
                   {msg.kind === "ok" ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
                   {msg.text}
@@ -228,34 +230,34 @@ export default function ConfigBot() {
         </Card>
 
         {/* Static Config */}
-        <Card className="glass-card border-white/10 bg-white/[0.03]">
-          <CardHeader className="border-b border-white/10 pb-4">
-            <CardTitle className="flex items-center gap-2 text-white">
+        <Card className="elevated-card border-gray-200 bg-white/[0.03]">
+          <CardHeader className="border-b border-gray-200 pb-4">
+            <CardTitle className="flex items-center gap-2 text-gray-900">
               <Terminal className="h-5 w-5 text-muted-foreground" /> Environment Settings
             </CardTitle>
             <CardDescription>Loaded from .env / startup vars.</CardDescription>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 <span className="text-xs text-muted-foreground uppercase mb-1">Max Positions</span>
-                <span className="font-mono font-bold text-lg text-white">{cfg?.max_positions ?? "—"}</span>
+                <span className="font-mono font-bold text-lg text-gray-900">{cfg?.max_positions ?? "—"}</span>
               </div>
-              <div className="flex flex-col p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 <span className="text-xs text-muted-foreground uppercase mb-1">Risk Per Trade</span>
-                <span className="font-mono font-bold text-lg text-white">{cfg?.risk_per_trade ?? "—"}</span>
+                <span className="font-mono font-bold text-lg text-gray-900">{cfg?.risk_per_trade ?? "—"}</span>
               </div>
-              <div className="flex flex-col p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 <span className="text-xs text-muted-foreground uppercase mb-1">Max Portfolio Risk</span>
-                <span className="font-mono font-bold text-lg text-white">{cfg?.max_portfolio_risk ?? "—"}</span>
+                <span className="font-mono font-bold text-lg text-gray-900">{cfg?.max_portfolio_risk ?? "—"}</span>
               </div>
-              <div className="flex flex-col p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl">
                 <span className="text-xs text-muted-foreground uppercase mb-1">Default Leverage</span>
-                <span className="font-mono font-bold text-lg text-white">{cfg?.default_leverage ?? "—"}</span>
+                <span className="font-mono font-bold text-lg text-gray-900">{cfg?.default_leverage ?? "—"}</span>
               </div>
-              <div className="flex flex-col p-4 bg-white/5 border border-white/10 rounded-xl col-span-2 relative overflow-hidden">
+              <div className="flex flex-col p-4 bg-gray-50 border border-gray-200 rounded-xl col-span-2 relative overflow-hidden">
                 <span className="text-xs text-muted-foreground uppercase mb-1 z-10 relative">Execution Mode</span>
-                <span className={cn("font-mono font-bold text-xl z-10 relative", cfg?.testnet ? "text-warning" : "text-success")}>
+                <span className={cn("font-mono font-bold text-xl z-10 relative", cfg?.testnet ? "text-warning" : "text-green-600")}>
                   {cfg?.testnet ? "TESTNET MODE" : "PRODUCTION MODE"}
                 </span>
                 {cfg?.testnet && (
@@ -266,8 +268,8 @@ export default function ConfigBot() {
               </div>
             </div>
 
-            <div className="mt-6 p-4 rounded-xl bg-white/5 border border-white/10 text-xs text-muted-foreground space-y-2">
-              <p className="font-semibold text-white">Note:</p>
+            <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200 text-xs text-muted-foreground space-y-2">
+              <p className="font-semibold text-gray-900">Note:</p>
               <div className="flex gap-2">
                 <span className="text-primary">•</span>
                 <span>Runtime changes are applied immediately to the next loop iteration.</span>

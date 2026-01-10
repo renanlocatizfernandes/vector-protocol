@@ -56,7 +56,7 @@ import {
   Ban
 } from "lucide-react";
 
-const COLORS = ["#2ad4c6", "#f59f3a", "#4fc3f7", "#2bd4a5", "#ff5a5f", "#9aa3b2"];
+const COLORS = ["#1E88E5", "#00C853", "#42A5F5", "#00E676", "#DC3545", "#6B7280"];
 
 function formatNumber(n: number | undefined | null, digits = 2) {
   if (typeof n !== "number" || Number.isNaN(n)) return "—";
@@ -73,10 +73,10 @@ function formatDuration(seconds: number | undefined | null) {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-popover border border-border rounded-lg shadow-lg p-3 text-sm">
-        <p className="font-semibold mb-1">{label}</p>
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm">
+        <p className="font-semibold mb-1 text-gray-900">{label}</p>
         {payload.map((entry: any, index: number) => (
-          <div key={index} className="flex items-center gap-2" style={{ color: entry.color }}>
+          <div key={index} className="flex items-center gap-2 text-gray-700">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
             <span>{entry.name}: {typeof entry.value === 'number' ? entry.value.toFixed(2) : entry.value}</span>
           </div>
@@ -164,7 +164,7 @@ export default function Metrics() {
   if (error) {
     return (
       <div className="p-6">
-        <div className="bg-destructive/10 text-destructive p-4 rounded-lg flex items-center gap-2">
+        <div className="bg-red-100 text-red-700 p-4 rounded-lg flex items-center gap-2 border border-red-200">
           <AlertTriangle className="w-5 h-5" />
           {error}
         </div>
@@ -176,10 +176,12 @@ export default function Metrics() {
     <div className="space-y-8 animate-in fade-in duration-500">
       {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Analytics</span>
-          <h1 className="text-3xl font-semibold text-white mt-2">Metrics & Performance</h1>
-          <p className="text-muted-foreground mt-1">Monitoramento em tempo real dos KPIs e saúde do sistema.</p>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+            <h1 className="text-3xl font-bold text-gray-900">Métricas & Performance</h1>
+          </div>
+          <p className="text-gray-600 ml-4">Monitoramento em tempo real dos KPIs e saúde do sistema.</p>
         </div>
         <Button onClick={loadAll} disabled={loading} variant="outline" className="gap-2">
           <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -194,10 +196,10 @@ export default function Metrics() {
         historyAnalysis && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* REALIZED PNL CARD */}
-            <Card className="glass-card border-primary/20 bg-white/5">
+            <Card className="elevated-card border-primary/20 bg-gray-50">
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Wallet className="w-5 h-5 text-success" />
+                  <Wallet className="w-5 h-5 text-green-600" />
                   PnL Realizado (24h)
                 </CardTitle>
                 <CardDescription>Dados oficiais da Binance (com taxas)</CardDescription>
@@ -206,16 +208,16 @@ export default function Metrics() {
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground">Lucro Líquido</p>
-                    <div className={`text-3xl font-bold ${historyAnalysis.binance_pnl_24h.net_pnl >= 0 ? "text-success" : "text-danger"}`}>
+                    <div className={`text-3xl font-bold ${historyAnalysis.binance_pnl_24h.net_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
                       {historyAnalysis.binance_pnl_24h.net_pnl >= 0 ? "+" : ""}{formatNumber(historyAnalysis.binance_pnl_24h.net_pnl)} USDT
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    <div className="p-2 bg-white/5 rounded border">
+                    <div className="p-2 bg-gray-50 rounded border">
                       <p className="text-muted-foreground">Bruto</p>
                       <p className="font-semibold">{formatNumber(historyAnalysis.binance_pnl_24h.gross_pnl)}</p>
                     </div>
-                    <div className="p-2 bg-white/5 rounded border">
+                    <div className="p-2 bg-gray-50 rounded border">
                       <p className="text-muted-foreground">Taxas</p>
                       <p className="font-semibold text-red-400">{formatNumber(historyAnalysis.binance_pnl_24h.fees)}</p>
                     </div>
@@ -243,7 +245,7 @@ export default function Metrics() {
                     ))}
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-success bg-success/10 p-3 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-600 bg-success/10 p-3 rounded-lg">
                     <Shield className="w-4 h-4" />
                     <span className="font-medium">Nenhuma recomendação de bloqueio no momento.</span>
                   </div>
@@ -279,7 +281,7 @@ export default function Metrics() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-muted-foreground">Taxa Aprovação</p>
-                  <div className="text-2xl font-bold text-success">
+                  <div className="text-2xl font-bold text-green-600">
                     {formatNumber(botMetrics.signals.approval_rate_pct, 1)}%
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -323,9 +325,9 @@ export default function Metrics() {
             {botMetrics && latencyData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={latencyData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                  <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(229, 231, 235, 0.5)' }} />
                   <Bar dataKey="avg" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Média" />
                   <Bar dataKey="max" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Máximo" />
                 </BarChart>
@@ -422,19 +424,19 @@ export default function Metrics() {
           <CardContent>
             {execMetrics ? (
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-white/5 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">Slippage Médio</p>
                   <div className="text-xl font-bold text-foreground">
                     {formatNumber(execMetrics.average_slippage_pct, 3)}%
                   </div>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">Maker Ratio</p>
                   <div className="text-xl font-bold text-foreground">
                     {formatNumber(execMetrics.maker_taker_distribution.maker_ratio * 100, 1)}%
                   </div>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">Re-quotes</p>
                   <div className="text-xl font-bold text-foreground">
                     {execMetrics.retry_metrics.re_quotes}
@@ -443,7 +445,7 @@ export default function Metrics() {
                     {execMetrics.retry_metrics.total_retries} retries
                   </p>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
+                <div className="p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm text-muted-foreground mb-1">Tempo Médio</p>
                   <div className="text-xl font-bold text-foreground">
                     {formatDuration(execMetrics.average_execution_time_sec)}
@@ -460,7 +462,7 @@ export default function Metrics() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-danger" />
+              <Shield className="w-5 h-5 text-red-600" />
               Gerenciamento de Risco
             </CardTitle>
           </CardHeader>
@@ -480,9 +482,9 @@ export default function Metrics() {
                   <div className="text-center">
                     <p className="text-sm text-muted-foreground">Streak Atual</p>
                     <div className="text-xl font-bold mt-1 flex justify-center gap-2">
-                      <span className="text-success">{riskMetrics.consecutive_wins}W</span>
+                      <span className="text-green-600">{riskMetrics.consecutive_wins}W</span>
                       <span className="text-muted-foreground">/</span>
-                      <span className="text-danger">{riskMetrics.consecutive_losses}L</span>
+                      <span className="text-red-600">{riskMetrics.consecutive_losses}L</span>
                     </div>
                   </div>
                   <div className="text-center">
@@ -497,14 +499,14 @@ export default function Metrics() {
                   <p className="text-sm font-medium mb-3">Ajustes Dinâmicos de Risco</p>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="flex flex-col items-center p-2 bg-success/10 rounded border border-success/20">
-                      <span className="text-success font-bold">{riskMetrics.risk_adjustments.increased}</span>
+                      <span className="text-green-600 font-bold">{riskMetrics.risk_adjustments.increased}</span>
                       <span className="text-xs text-muted-foreground">Aumentados</span>
                     </div>
                     <div className="flex flex-col items-center p-2 bg-danger/10 rounded border border-danger/20">
-                      <span className="text-danger font-bold">{riskMetrics.risk_adjustments.decreased}</span>
+                      <span className="text-red-600 font-bold">{riskMetrics.risk_adjustments.decreased}</span>
                       <span className="text-xs text-muted-foreground">Reduzidos</span>
                     </div>
-                    <div className="flex flex-col items-center p-2 bg-white/5 rounded border border-white/10">
+                    <div className="flex flex-col items-center p-2 bg-gray-50 rounded border border-white/10">
                       <span className="font-bold">{riskMetrics.risk_adjustments.normal}</span>
                       <span className="text-xs text-muted-foreground">Normais</span>
                     </div>
@@ -531,9 +533,9 @@ export default function Metrics() {
             <CardContent className="h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={eventTypesData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-                  <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                  <XAxis dataKey="name" stroke="#6B7280" fontSize={12} tickLine={false} axisLine={false} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(229, 231, 235, 0.5)' }} />
                   <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} name="Ocorrências" />
                 </BarChart>
               </ResponsiveContainer>
@@ -573,7 +575,7 @@ export default function Metrics() {
                           {item.win_rate.toFixed(1)}%
                         </Badge>
                       </TableCell>
-                      <TableCell className={`text-right font-bold ${item.total_pnl >= 0 ? "text-success" : "text-danger"}`}>
+                      <TableCell className={`text-right font-bold ${item.total_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
                         {item.total_pnl > 0 ? "+" : ""}{item.total_pnl.toFixed(2)}
                       </TableCell>
                     </TableRow>
