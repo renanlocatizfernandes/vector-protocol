@@ -105,85 +105,94 @@ export const BotStatus: React.FC = () => {
     const exAvailable = daily?.exchange?.available_balance ?? 0;
 
     return (
-        <Card className="h-full relative overflow-hidden glass-card border-white/10 shadow-2xl hover:shadow-primary/5 transition-all duration-300">
-            {/* Enhanced Neon Glow Background */}
-            <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-primary/20 to-accent/10 rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDuration: '3s' }} />
-            <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
-
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 relative">
-                {/* Gradient accent line */}
-                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <Cpu className="w-4 h-4 text-primary drop-shadow-[0_0_6px_rgba(42,212,198,0.4)]" />
-                    <span className="bg-gradient-to-r from-white to-primary/80 bg-clip-text text-transparent font-semibold">System Status</span>
+        <Card className="h-full elevated-card-hover">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-gray-100">
+                <CardTitle className="text-base font-semibold flex items-center gap-2 text-gray-900">
+                    <Activity className="w-5 h-5 text-blue-600" />
+                    Status do Sistema
                 </CardTitle>
-                <div className={cn(
-                    "px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-2 shadow-lg transition-all duration-300",
-                    isRunning
-                        ? "bg-success/10 text-success border-success/30 shadow-success/20"
-                        : "bg-danger/10 text-danger border-danger/30 shadow-danger/15"
-                )}>
-                    <div className={cn(
-                        "w-2 h-2 rounded-full shadow-lg",
-                        isRunning ? "bg-success animate-pulse shadow-success/50" : "bg-danger shadow-danger/50"
-                    )} />
-                    {isRunning ? 'ONLINE' : 'OFFLINE'}
-                </div>
+                <Badge
+                    className={cn(
+                        "px-3 py-1.5 font-bold",
+                        isRunning
+                            ? "bg-green-100 text-green-700 border-green-200"
+                            : "bg-red-100 text-red-700 border-red-200"
+                    )}
+                >
+                    <span className="flex items-center gap-2">
+                        <span className={cn(
+                            "w-1.5 h-1.5 rounded-full",
+                            isRunning ? "bg-green-500" : "bg-red-500"
+                        )} />
+                        {isRunning ? 'ATIVO' : 'OFFLINE'}
+                    </span>
+                </Badge>
             </CardHeader>
 
             <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Daily P&L (DB)</span>
+                    <div className={cn(
+                        "stat-card",
+                        dbPnl >= 0 ? "stat-card-success" : "stat-card-danger"
+                    )}>
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">P&L Diário (DB)</span>
                         <span className={cn(
-                            "text-2xl font-bold",
-                            dbPnl >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                            "text-2xl font-bold mt-1 block",
+                            dbPnl >= 0 ? "text-green-600" : "text-red-600"
                         )}>
                             ${dbPnl.toFixed(2)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">Trades: {dbTrades}</span>
+                        <span className="text-xs text-gray-500 mt-1">Trades: {dbTrades}</span>
                     </div>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-accent/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Win Rate (DB)</span>
-                        <span className="text-2xl font-bold text-primary drop-shadow-[0_0_8px_rgba(42,212,198,0.3)]">
+                    <div className="stat-card">
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Win Rate (DB)</span>
+                        <span className="text-2xl font-bold text-blue-600 mt-1 block">
                             {dbWinRate.toFixed(1)}%
                         </span>
                     </div>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Realized P&L (Exchange)</span>
+                    <div className={cn(
+                        "stat-card",
+                        exRealized >= 0 ? "stat-card-success" : "stat-card-danger"
+                    )}>
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Realizado (Exchange)</span>
                         <span className={cn(
-                            "text-2xl font-bold",
-                            exRealized >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                            "text-2xl font-bold mt-1 block",
+                            exRealized >= 0 ? "text-green-600" : "text-red-600"
                         )}>
                             ${exRealized.toFixed(2)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">Fees: {exFees.toFixed(2)} | Funding: {exFunding.toFixed(2)}</span>
+                        <span className="text-xs text-gray-500 mt-1">Fees: {exFees.toFixed(2)} | Funding: {exFunding.toFixed(2)}</span>
                     </div>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Unrealized P&L (Exchange)</span>
+                    <div className={cn(
+                        "stat-card",
+                        exUnrealized >= 0 ? "stat-card-success" : "stat-card-danger"
+                    )}>
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Não Realizado (Exchange)</span>
                         <span className={cn(
-                            "text-2xl font-bold",
-                            exUnrealized >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                            "text-2xl font-bold mt-1 block",
+                            exUnrealized >= 0 ? "text-green-600" : "text-red-600"
                         )}>
                             ${exUnrealized.toFixed(2)}
                         </span>
                     </div>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Net P&L (R+U)</span>
+                    <div className={cn(
+                        "stat-card",
+                        exNet >= 0 ? "stat-card-success" : "stat-card-danger"
+                    )}>
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">P&L Líquido (R+U)</span>
                         <span className={cn(
-                            "text-2xl font-bold",
-                            exNet >= 0 ? "text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]" : "text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]"
+                            "text-2xl font-bold mt-1 block",
+                            exNet >= 0 ? "text-green-600" : "text-red-600"
                         )}>
                             ${exNet.toFixed(2)}
                         </span>
                     </div>
-                    <div className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1.5 hover:border-primary/20 transition-all duration-300 card-glow-hover">
-                        <span className="text-xs text-muted-foreground uppercase tracking-wider">Wallet (Exchange)</span>
-                        <span className="text-xl font-bold text-white">
+                    <div className="stat-card">
+                        <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Carteira (Exchange)</span>
+                        <span className="text-xl font-bold text-gray-900 mt-1 block">
                             ${exTotalWallet.toFixed(2)}
                         </span>
-                        <span className="text-[10px] text-muted-foreground">Available: ${exAvailable.toFixed(2)}</span>
+                        <span className="text-xs text-gray-500 mt-1">Disponível: ${exAvailable.toFixed(2)}</span>
                     </div>
                 </div>
 
@@ -191,29 +200,29 @@ export const BotStatus: React.FC = () => {
                     {!isRunning ? (
                         <>
                             <Button
-                                className="flex-1 bg-gradient-to-r from-primary to-accent hover:from-primary-light hover:to-accent-light shadow-lg shadow-primary/15 hover:shadow-primary/25 transition-all duration-300"
+                                className="flex-1 bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white font-semibold shadow-md hover:shadow-lg"
                                 onClick={() => handleStart(false)}
                                 disabled={loading}
                             >
-                                <Play className="mr-2 h-4 w-4" /> Start Live
+                                <Play className="mr-2 h-4 w-4" /> Iniciar Bot
                             </Button>
                             <Button
                                 variant="outline"
-                                className="flex-1 border-primary/30 hover:bg-primary/10 hover:border-primary/50 transition-all duration-300"
+                                className="flex-1"
                                 onClick={() => handleStart(true)}
                                 disabled={loading}
                             >
-                                <Play className="mr-2 h-4 w-4" /> Dry Run
+                                <Play className="mr-2 h-4 w-4" /> Modo Teste
                             </Button>
                         </>
                     ) : (
                         <Button
                             variant="destructive"
-                            className="flex-1 w-full shadow-lg shadow-danger/15 hover:shadow-danger/25 transition-all duration-300"
+                            className="flex-1 w-full"
                             onClick={handleStop}
                             disabled={loading}
                         >
-                            <Square className="mr-2 h-4 w-4 fill-current" /> Stop Engine
+                            <Square className="mr-2 h-4 w-4 fill-current" /> Parar Bot
                         </Button>
                     )}
                 </div>
@@ -222,46 +231,46 @@ export const BotStatus: React.FC = () => {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className="w-full text-xs text-muted-foreground hover:text-white"
+                        className="w-full text-xs"
                         onClick={() => setShowConfig(!showConfig)}
                     >
                         <Settings className="mr-2 h-3 w-3" />
-                        {showConfig ? 'Hide Configuration' : 'Quick Configuration'}
+                        {showConfig ? 'Ocultar Configuração' : 'Configuração Rápida'}
                     </Button>
 
                     {showConfig && (
-                        <div className="mt-4 space-y-4 p-4 rounded-lg bg-white/5 border border-white/10 animate-in slide-in-from-top-2">
+                        <div className="mt-4 space-y-4 p-4 rounded-lg bg-gray-50 border border-gray-200 animate-in slide-in-from-top-2">
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Scan (min)</label>
+                                    <label className="text-xs font-medium text-gray-700">Intervalo (min)</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-white/5 border-white/10"
+                                        className="h-8"
                                         value={scanInterval}
                                         onChange={e => setScanInterval(e.target.value)}
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Min Score</label>
+                                    <label className="text-xs font-medium text-gray-700">Score Mínimo</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-white/5 border-white/10"
+                                        className="h-8"
                                         value={minScore}
                                         onChange={e => setMinScore(e.target.value)}
                                     />
                                 </div>
                                 <div className="space-y-1 col-span-2">
-                                    <label className="text-xs font-medium text-muted-foreground">Max Positions</label>
+                                    <label className="text-xs font-medium text-gray-700">Posições Máx</label>
                                     <Input
                                         type="number"
-                                        className="h-8 bg-white/5 border-white/10"
+                                        className="h-8"
                                         value={maxPositions}
                                         onChange={e => setMaxPositions(e.target.value)}
                                     />
                                 </div>
                             </div>
                             <Button size="sm" variant="secondary" className="w-full" onClick={handleUpdateConfig} disabled={loading}>
-                                <RefreshCw className="mr-2 h-3 w-3" /> Save Changes
+                                <RefreshCw className="mr-2 h-3 w-3" /> Salvar Alterações
                             </Button>
                         </div>
                     )}
@@ -269,10 +278,10 @@ export const BotStatus: React.FC = () => {
 
                 {message && (
                     <div className={cn(
-                        "p-2 rounded text-xs text-center font-medium border",
+                        "p-3 rounded-lg text-sm text-center font-medium border",
                         message.type === 'success'
-                            ? "bg-green-500/10 text-green-500 border-green-500/20"
-                            : "bg-red-500/10 text-red-500 border-red-500/20"
+                            ? "bg-green-100 text-green-700 border-green-200"
+                            : "bg-red-100 text-red-700 border-red-200"
                     )}>
                         {message.text}
                     </div>

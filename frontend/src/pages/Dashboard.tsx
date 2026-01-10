@@ -10,13 +10,15 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-8 animate-fade-in">
       <header className="flex flex-col gap-2">
-        <span className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Command Center</span>
-        <h1 className="text-3xl font-semibold text-white">Trading Overview</h1>
-        <p className="text-muted-foreground">Status, performance, and active exposure at a glance.</p>
+        <div className="flex items-center gap-3">
+          <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+          <h1 className="text-3xl font-bold text-gray-900">Central de Investimentos</h1>
+        </div>
+        <p className="text-gray-600 ml-4">Acompanhe status, performance e posições ativas em tempo real.</p>
       </header>
 
-      <div className="rounded-xl border border-warning/30 bg-warning/10 text-warning px-4 py-3 text-sm">
-        Whitelist enforced: the bot can monitor any open position, but new entries only execute for symbols in the whitelist.
+      <div className="rounded-lg border border-yellow-300 bg-yellow-50 text-yellow-800 px-4 py-3 text-sm font-medium">
+        Whitelist ativa: o bot monitora todas as posições, mas novas entradas são permitidas apenas para símbolos na whitelist.
       </div>
 
       {/* Top Section: Status & Performance */}
@@ -44,10 +46,10 @@ export const Dashboard: React.FC = () => {
 
       {/* Health Dashboard */}
       <div className="animate-slide-up" style={{ animationDelay: '0.25s' }}>
-        <div className="flex items-center gap-3 mb-4 pl-1">
-          <div className="w-1 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(42,212,198,0.35)]" />
-          <h2 className="text-xl font-semibold text-white">
-            System Health
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+          <h2 className="text-2xl font-bold text-gray-900">
+            Saúde do Sistema
           </h2>
         </div>
         <HealthDashboard />
@@ -55,10 +57,10 @@ export const Dashboard: React.FC = () => {
 
       {/* Bottom: Positions */}
       <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
-        <div className="flex items-center gap-3 mb-4 pl-1">
-          <div className="w-1 h-6 bg-primary rounded-full shadow-[0_0_10px_rgba(42,212,198,0.35)]" />
-          <h2 className="text-xl font-semibold text-white">
-            Active Positions
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-1 h-8 bg-gradient-to-b from-blue-600 to-green-600 rounded-full" />
+          <h2 className="text-2xl font-bold text-gray-900">
+            Posições Ativas
           </h2>
         </div>
         <PositionsTable />

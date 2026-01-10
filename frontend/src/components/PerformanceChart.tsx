@@ -52,9 +52,9 @@ export const PerformanceChart: React.FC = () => {
 
     if (loading) {
         return (
-            <Card className="h-full border-white/10 bg-white/5">
+            <Card className="h-full elevated-card">
                 <div className="h-full flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
             </Card>
         );
@@ -62,7 +62,7 @@ export const PerformanceChart: React.FC = () => {
 
     if (data.length === 0) {
         return (
-            <Card className="h-full flex items-center justify-center text-muted-foreground border-dashed border-white/10">
+            <Card className="h-full elevated-card flex items-center justify-center text-gray-500 border-dashed">
                 <CardContent>
                     <p>Nenhum histórico de performance disponível.</p>
                 </CardContent>
@@ -74,82 +74,80 @@ export const PerformanceChart: React.FC = () => {
     const isPositive = currentPnl >= 0;
 
     return (
-        <Card className="h-full flex flex-col overflow-hidden relative group glass-card border-white/10">
-            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                <TrendingUp className="w-24 h-24 text-primary" />
-            </div>
-
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 z-10">
-                <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                    <DollarSign className="h-4 w-4 text-primary" /> Total Performance
+        <Card className="h-full flex flex-col overflow-hidden elevated-card-hover">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 border-b border-gray-100">
+                <CardTitle className="text-base font-semibold flex items-center gap-2 text-gray-900">
+                    <TrendingUp className="w-5 h-5 text-blue-600" /> Performance Total
                 </CardTitle>
                 <div className="flex flex-col items-end">
                     <span
                         className={cn(
                             'text-2xl font-bold tracking-tight',
                             isPositive
-                                ? 'text-success drop-shadow-[0_0_8px_rgba(43,212,165,0.3)]'
-                                : 'text-danger drop-shadow-[0_0_8px_rgba(255,90,95,0.3)]'
+                                ? 'text-green-600'
+                                : 'text-red-600'
                         )}
                     >
                         ${currentPnl.toFixed(2)}
                     </span>
-                    <span className="text-xs text-muted-foreground">Cumulative PnL (Exchange)</span>
+                    <span className="text-xs text-gray-500">P&L Acumulado (Exchange)</span>
                 </div>
             </CardHeader>
-            <CardContent className="flex-1 min-h-[300px] pt-4 z-10">
+            <CardContent className="flex-1 min-h-[300px] pt-4">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data}>
                         <defs>
                             <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
                                 <stop
                                     offset="5%"
-                                    stopColor={isPositive ? '#2bd4a5' : '#ff5a5f'}
-                                    stopOpacity={0.2}
+                                    stopColor={isPositive ? '#00C853' : '#DC3545'}
+                                    stopOpacity={0.3}
                                 />
                                 <stop
                                     offset="95%"
-                                    stopColor={isPositive ? '#2bd4a5' : '#ff5a5f'}
+                                    stopColor={isPositive ? '#00C853' : '#DC3545'}
                                     stopOpacity={0}
                                 />
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
                         <XAxis
                             dataKey="date"
-                            stroke="#9aa3b2"
-                            fontSize={11}
+                            stroke="#6B7280"
+                            fontSize={12}
                             tickLine={false}
                             axisLine={false}
                             minTickGap={30}
+                            style={{ fontWeight: 500 }}
                         />
                         <YAxis
-                            stroke="#9aa3b2"
-                            fontSize={11}
+                            stroke="#6B7280"
+                            fontSize={12}
                             tickLine={false}
                             axisLine={false}
                             tickFormatter={value => `$${value.toFixed(0)}`}
+                            style={{ fontWeight: 500 }}
                         />
                         <Tooltip
                             contentStyle={{
-                                backgroundColor: '#111827',
-                                borderColor: '#1f2937',
-                                color: '#ffffff',
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#E5E7EB',
+                                color: '#374151',
                                 borderRadius: '8px',
-                                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
                             }}
-                            itemStyle={{ color: '#ffffff' }}
+                            itemStyle={{ color: '#374151', fontWeight: 600 }}
                             formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name]}
-                            labelStyle={{ color: '#9aa3b2' }}
+                            labelStyle={{ color: '#6B7280', fontWeight: 500 }}
                         />
                         <Area
                             type="monotone"
                             dataKey="cumulative"
-                            stroke={isPositive ? '#2bd4a5' : '#ff5a5f'}
-                            strokeWidth={3}
+                            stroke={isPositive ? '#00C853' : '#DC3545'}
+                            strokeWidth={2}
                             fillOpacity={1}
                             fill="url(#colorPnl)"
-                            activeDot={{ r: 6, strokeWidth: 0, fill: '#ffffff' }}
+                            activeDot={{ r: 5, strokeWidth: 2, stroke: '#FFFFFF', fill: isPositive ? '#00C853' : '#DC3545' }}
                         />
                     </AreaChart>
                 </ResponsiveContainer>
