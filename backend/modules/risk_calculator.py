@@ -49,8 +49,13 @@ class RiskCalculator:
         self.consecutive_wins = 0
         self.consecutive_losses = 0
         
+        # 🎯 Carregar limite de margem USD
+        settings = get_settings()
+        self.max_margin_usd = getattr(settings, 'MAX_MARGIN_USD_PER_POSITION', 5.0)
+
         logger.info("✅ Risk Calculator v4.0 - AGRESSIVO (70 USDT)")
         logger.info(f"📊 Margem máxima por posição: {self.max_margin_per_position*100:.0f}%")
+        logger.info(f"🎯 Limite de margem USD (abertura): ${self.max_margin_usd:.2f}")
         logger.info(f"💰 Reserva para pyramiding: {self.pyramiding_reserve*100:.0f}%")
         logger.info(f"🔴 Limite TOTAL de capital: {self.max_total_capital_usage*100:.0f}%")
         logger.info(f"🛑 Stop loss DINÂMICO: {self.min_stop_loss_pct}% - {self.max_stop_loss_pct}% (base {self.base_stop_loss_pct}%)")
@@ -229,12 +234,27 @@ class RiskCalculator:
             
             # Margem necessária = (Entry Price × Quantity) / Leverage
             # Quantity = (Margem × Leverage) / Entry Price
-            
+
             quantity = (max_margin_this_position * leverage) / entry_price
-            
+
             # Calcular quanto será usado como margem
             margin_required = (entry_price * quantity) / leverage
-            
+
+            # 🎯 NOVO: LIMITE DE MARGEM INICIAL PARA ABERTURA
+            # Máximo $5 para abertura (DCA e ajustes posteriores não têm limite)
+            if margin_required > self.max_margin_usd:
+                logger.info(
+                    f"🎯 {symbol}: Margem inicial ${margin_required:.2f} > ${self.max_margin_usd:.2f} "
+                    f"(limite para abertura). Ajustando quantity..."
+                )
+                # Recalcular quantity para respeitar limite de margem
+                quantity = (self.max_margin_usd * leverage) / entry_price
+                margin_required = self.max_margin_usd
+                logger.info(
+                    f"  ✅ Ajustado: Quantity={quantity:.4f}, Margem=${margin_required:.2f} "
+                    f"(dinamicidade mantida: leverage {leverage}x, score {score})"
+                )
+
             # ================================
             # 5. VALIDAÇÕES FINAIS
             # ================================

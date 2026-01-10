@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     MAX_PORTFOLIO_RISK: float = 0.15  # 15% máximo em risco
     MAX_TOTAL_CAPITAL_USAGE: float = 0.90  # Fraction of total capital available
     DCA_RESERVE_PCT: float = 0.20  # Reservar 20% do capital para DCA
+    MAX_MARGIN_USD_PER_POSITION: float = 5.0  # 🎯 Máximo de $5 de margem por posição
     DEFAULT_LEVERAGE: int = 10  # 10x padrão (reduz margem requerida 50%)
     # Risco e spread (afinamento fino)
     SNIPER_RISK_PER_TRADE: float = 0.02  # 2% por sniper
