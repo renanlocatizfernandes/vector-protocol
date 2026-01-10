@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { RefreshCw, Layers, ArrowUpRight, ArrowDownRight, Filter, MoreHorizontal } from 'lucide-react';
+import { RefreshCw, Activity, ArrowUpRight, ArrowDownRight, Filter, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const useMediaQuery = (query: string): boolean => {
