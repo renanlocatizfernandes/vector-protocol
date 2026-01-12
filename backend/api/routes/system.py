@@ -356,3 +356,68 @@ async def get_market_conditions():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/dashboard", summary="Get metrics dashboard")
+async def get_metrics_dashboard():
+    """
+    Returns comprehensive metrics dashboard with real-time statistics.
+
+    Includes:
+    - Execution stats (orders, latency, success rate)
+    - Signal stats (received, processed, rejection rate)
+    - Trade stats (win rate, PnL)
+    - Resource usage (CPU, memory, uptime)
+    - Connection status (Binance API, Redis)
+    """
+    from modules.metrics_dashboard import metrics_dashboard
+
+    try:
+        dashboard = metrics_dashboard.get_full_dashboard()
+        return dashboard
+    except Exception as e:
+        logger.error(f"Error getting metrics dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/latency", summary="Get latency statistics")
+async def get_latency_dashboard():
+    """
+    Returns detailed latency statistics.
+    """
+    from modules.metrics_dashboard import metrics_dashboard
+
+    try:
+        stats = metrics_dashboard.get_latency_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting latency stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/trades", summary="Get trade statistics")
+async def get_trade_dashboard():
+    """
+    Returns detailed trade statistics.
+    """
+    from modules.metrics_dashboard import metrics_dashboard
+
+    try:
+        stats = metrics_dashboard.get_trade_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting trade stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/dashboard/resources", summary="Get resource usage statistics")
+async def get_resource_dashboard():
+    """
+    Returns detailed resource usage statistics.
+    """
+    from modules.metrics_dashboard import metrics_dashboard
+
+    try:
+        stats = metrics_dashboard.get_resource_stats()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting resource stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

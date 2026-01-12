@@ -40,10 +40,10 @@ class Settings(BaseSettings):
     # Risco e spread (afinamento fino)
     SNIPER_RISK_PER_TRADE: float = 0.02  # 2% por sniper
     MAX_SPREAD_PCT_CORE: float = 0.20 # Spread mais apertado
-    MAX_SPREAD_PCT_SNIPER: float = 0.30
+    MAX_SPREAD_PCT_SNIPER: float = 0.40  # 0.4% ideal para sniper
 
     # Sniper strategy (scalps rápidos) - AGRESSIVO
-    SNIPER_EXTRA_SLOTS: int = 0  # Sem slots extras por enquanto
+    SNIPER_EXTRA_SLOTS: int = 5  # 5 slots extras para sniper
     SNIPER_TP_PCT: float = 1.2  # Alvos um pouco maiores
     SNIPER_SL_PCT: float = 0.8  # Stops mais largos para evitar ruído
     SNIPER_DEFAULT_LEVERAGE: int = 5  # 5x para sniper (era 20x)
@@ -143,15 +143,17 @@ class Settings(BaseSettings):
     TRAILING_STOP_MIN_CALLBACK_PCT: float = 0.5  # Mínimo 0.5%
     TRAILING_STOP_MAX_CALLBACK_PCT: float = 3.0  # Máximo 3.0%
     
-    # Legacy settings (maintained for compatibility)
-    PROD_MIN_SCORE: int = 30  # Reduzido para 30 (Ultra Aggressive)
-    PROD_VOLUME_THRESHOLD: float = 0.1  # Reduzido para 0.1
-    PROD_RSI_OVERSOLD: int = 40 # Relaxado
-    PROD_RSI_OVERBOUGHT: int = 60 # Relaxado
-    REQUIRE_TREND_CONFIRMATION: bool = False # Desativado
-    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.05  # Mínimo momentum reduzido
-    RR_MIN_TREND: float = 1.0  # R:R mínimo agressivo
-    RR_MIN_RANGE: float = 1.0  # R:R mínimo agressivo
+    # ✅ PASSO 1: PADRONIZAR MIN_SCORE EM TODOS OS MÓDULOS
+    # Signal Generator Thresholds (Production-Quality)
+    PROD_MIN_SCORE: int = 70  # High Quality (padronizado com BOT_MIN_SCORE)
+    TESTNET_MIN_SCORE: int = 65  # Slightly relaxed para testnet
+    PROD_VOLUME_THRESHOLD: float = 0.5  # 50% do volume médio de 20 períodos
+    PROD_RSI_OVERSOLD: int = 30  # Oversold clássico
+    PROD_RSI_OVERBOUGHT: int = 70  # Overbought clássico
+    REQUIRE_TREND_CONFIRMATION: bool = True  # Confirmação multi-timeframe (1h + 4h)
+    MIN_MOMENTUM_THRESHOLD_PCT: float = 0.2  # 0.2% momentum mínimo
+    RR_MIN_TREND: float = 1.2  # R:R mínimo para trending market
+    RR_MIN_RANGE: float = 1.6  # R:R mínimo para ranging market
 
     # Correlação
     CORR_WINDOW_DAYS: int = 14
@@ -166,10 +168,11 @@ class Settings(BaseSettings):
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
     REQUIRED_SCORE_SIDEWAYS: int = 50  # Aumentado para qualidade
 
-    # 🛑 HARD STOPS - 20% diário conforme solicitado
-    # 🛑 HARD STOPS - Conservador
-    DAILY_MAX_LOSS_PCT: float = 0.05  # 5% máximo de perda/dia
-    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.25  # 25% drawdown intraday
+    # ✅ PASSO 2: AJUSTAR HARD STOPS PARA CRYPTO-FRIENDLY
+    # Crypto-friendly hard stops (volatilidade nativa do mercado)
+    DAILY_MAX_LOSS_PCT: float = 0.08  # 8% máximo de perda/dia (antes 5%)
+    INTRADAY_DRAWDOWN_HARD_STOP_PCT: float = 0.30  # 30% drawdown intraday (antes 25%)
+    CIRCUIT_BREAKER_DAILY_LOSS_PCT: float = 8.0  # Parar se perder 8% do capital no dia (antes 5%)
 
     # Circuit Breaker (Melhoria #8/#14)
     CIRCUIT_BREAKER_ENABLED: bool = True
@@ -251,6 +254,14 @@ class Settings(BaseSettings):
     CACHE_SYMBOL_INFO_TTL: int = 3600  # Info de símbolos: 1h
     CACHE_MARKET_DATA_TTL: int = 2  # Preços: 2s
     CACHE_KLINES_TTL: int = 30  # Klines: 30s
+    
+    # ✅ PASSO 3: CONNECTION POOLING PARA BINANCE API
+    # Configurações de otimização de conexões HTTP
+    BINANCE_MAX_CONNECTIONS: int = 100  # Máximo de conexões simultâneas
+    BINANCE_MAX_KEEPALIVE: int = 20  # Conexões keep-alive no pool
+    BINANCE_CONNECTION_TIMEOUT: int = 10  # Timeout de conexão (segundos)
+    BINANCE_READ_TIMEOUT: int = 30  # Timeout de leitura (segundos)
+    BINANCE_REQUEST_TIMEOUT: int = 60  # Timeout total da requisição (segundos)
     
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""

@@ -2,18 +2,303 @@ from binance.client import Client
 from binance.exceptions import BinanceAPIException
 from config.settings import get_settings
 from utils.logger import setup_logger
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable, Any, Set, Tuple
 import asyncio
 import contextlib
 from binance.streams import ThreadedWebsocketManager
 import json
 import websockets
 import redis.asyncio as redis
+from urllib3.util.retry import Retry
+from urllib3 import PoolManager
+from datetime import datetime
 
 logger = setup_logger("binance_client")
 
+# ✅ PR1.2: Validação de Consistência de Dados
+
+class DataValidationError(Exception):
+    """Exceção para erros de validação de dados"""
+    def __init__(self, field: str, reason: str, data: Any = None):
+        self.field = field
+        self.reason = reason
+        self.data = data
+        super().__init__(f"Validação falhou em '{field}': {reason}")
+
+class DataValidator:
+    """Validador de dados para respostas da API Binance"""
+    
+    # Campos obrigatórios por endpoint
+    REQUIRED_FIELDS = {
+        'futures_account': ['totalWalletBalance', 'availableBalance', 'positions'],
+        'futures_symbol_ticker': ['symbol', 'price'],
+        'futures_exchange_info': ['symbols'],
+        'futures_position_information': ['symbol', 'positionAmt', 'entryPrice'],
+        'futures_get_order': ['symbol', 'orderId', 'status'],
+    }
+    
+    # Tipos esperados para campos críticos
+    FIELD_TYPES = {
+        'totalWalletBalance': (int, float, str),
+        'availableBalance': (int, float, str),
+        'price': (int, float, str),
+        'quantity': (int, float, str),
+        'positionAmt': (int, float, str),
+        'entryPrice': (int, float, str),
+        'liquidationPrice': (int, float, str),
+        'unRealizedProfit': (int, float, str),
+        'avgPrice': (int, float, str),
+        'executedQty': (int, float, str),
+        'cumQuote': (int, float, str),
+    }
+    
+    # Valores que indicam dados inválidos
+    INVALID_VALUES = [None, '', 'NaN', 'Infinity', '-Infinity', 'null', 'undefined']
+    
+    @staticmethod
+    def validate_required_fields(endpoint: str, data: Dict) -> Tuple[bool, List[str]]:
+        """
+        Valida se campos obrigatórios estão presentes e não vazios
+        
+        Args:
+            endpoint: Nome do método da API
+            data: Dados recebidos
+            
+        Returns:
+            (valid, missing_fields)
+        """
+        if not isinstance(data, dict):
+            return False, ['response_is_not_dict']
+        
+        required = DataValidator.REQUIRED_FIELDS.get(endpoint, [])
+        missing = []
+        
+        for field in required:
+            if field not in data:
+                missing.append(field)
+            elif DataValidator._is_invalid_value(data[field]):
+                missing.append(f"{field}_invalid")
+        
+        if missing:
+            logger.warning(f"⚠️ Validação {endpoint}: campos faltando/inválidos: {missing}")
+        
+        return len(missing) == 0, missing
+    
+    @staticmethod
+    def validate_field_types(data: Dict, fields_to_check: Optional[Set[str]] = None) -> Tuple[bool, List[str]]:
+        """
+        Valida se campos têm tipos esperados (para conversão segura)
+        
+        Args:
+            data: Dados recebidos
+            fields_to_check: Conjunto específico de campos para validar (None = todos)
+            
+        Returns:
+            (valid, invalid_fields)
+        """
+        if not isinstance(data, dict):
+            return False, ['data_is_not_dict']
+        
+        fields = fields_to_check if fields_to_check is not None else DataValidator.FIELD_TYPES.keys()
+        invalid = []
+        
+        for field in fields:
+            if field not in data:
+                continue
+                
+            value = data[field]
+            expected_types = DataValidator.FIELD_TYPES.get(field)
+            
+            if expected_types and not isinstance(value, expected_types):
+                # Verificar se pode ser convertido para float
+                if not DataValidator._can_convert_to_float(value):
+                    invalid.append(f"{field}_type_{type(value).__name__}")
+        
+        if invalid:
+            logger.warning(f"⚠️ Validação de tipos: campos com tipo incorreto: {invalid}")
+        
+        return len(invalid) == 0, invalid
+    
+    @staticmethod
+    def validate_numeric_range(data: Dict, field: str, min_val: Optional[float] = None, max_val: Optional[float] = None) -> bool:
+        """
+        Valida se campo numérico está dentro de range esperado
+        
+        Args:
+            data: Dados recebidos
+            field: Campo para validar
+            min_val: Valor mínimo (None = não validar)
+            max_val: Valor máximo (None = não validar)
+            
+        Returns:
+            True se válido
+        """
+        if field not in data:
+            return True  # Não validar se campo não existe
+        
+        value = DataValidator._safe_float(data[field])
+        if value is None:
+            return False
+        
+        if min_val is not None and value < min_val:
+            logger.warning(f"⚠️ Valor {field}={value} abaixo do mínimo {min_val}")
+            return False
+        
+        if max_val is not None and value > max_val:
+            logger.warning(f"⚠️ Valor {field}={value} acima do máximo {max_val}")
+            return False
+        
+        return True
+    
+    @staticmethod
+    def validate_api_response(endpoint: str, data: Dict) -> Tuple[bool, Optional[DataValidationError]]:
+        """
+        Validação completa de resposta da API
+        
+        Args:
+            endpoint: Nome do método da API
+            data: Dados recebidos
+            
+        Returns:
+            (is_valid, error) - error=None se válido
+        """
+        # 1. Validar campos obrigatórios
+        required_valid, missing = DataValidator.validate_required_fields(endpoint, data)
+        if not required_valid:
+            return False, DataValidationError(
+                f"{endpoint}_required_fields",
+                f"Campos obrigatórios faltando: {missing}",
+                data
+            )
+        
+        # 2. Validar tipos de campos críticos
+        types_valid, invalid_types = DataValidator.validate_field_types(data)
+        if not types_valid:
+            return False, DataValidationError(
+                f"{endpoint}_field_types",
+                f"Campos com tipos incorretos: {invalid_types}",
+                data
+            )
+        
+        # 3. Validações específicas por endpoint
+        if endpoint == 'futures_account':
+            # Saldo não pode ser negativo
+            if not DataValidator.validate_numeric_range(data, 'totalWalletBalance', min_val=0):
+                return False, DataValidationError(
+                    'futures_account_negative_balance',
+                    'Saldo total negativo',
+                    data.get('totalWalletBalance')
+                )
+        
+        elif endpoint == 'futures_symbol_ticker':
+            # Preço deve ser positivo
+            if not DataValidator.validate_numeric_range(data, 'price', min_val=0):
+                return False, DataValidationError(
+                    'futures_symbol_ticker_invalid_price',
+                    'Preço inválido (não positivo)',
+                    data.get('price')
+                )
+        
+        return True, None
+    
+    @staticmethod
+    def compare_cache_vs_api(cache_key: str, cached_value: Any, api_value: Any, tolerance_pct: float = 5.0) -> bool:
+        """
+        Compara valor em cache vs valor da API para detectar divergências
+        
+        Args:
+            cache_key: Chave do cache
+            cached_value: Valor armazenado em cache
+            api_value: Valor retornado pela API
+            tolerance_pct: Tolerância percentual para comparações numéricas
+            
+        Returns:
+            True se valores são consistentes dentro da tolerância
+        """
+        # Ambos None ou vazios = consistente
+        if not cached_value and not api_value:
+            return True
+        
+        # Um valor, outro None = divergência
+        if bool(cached_value) != bool(api_value):
+            logger.warning(f"⚠️ Divergência cache/API [{cache_key}]: cache={cached_value}, api={api_value}")
+            return False
+        
+        # Tentar comparação numérica
+        try:
+            cached_num = float(cached_value)
+            api_num = float(api_value)
+            
+            if cached_num == 0 and api_num == 0:
+                return True
+            
+            # Calcular diferença percentual
+            pct_diff = abs(cached_num - api_num) / max(abs(api_num), 0.0001) * 100
+            
+            if pct_diff > tolerance_pct:
+                logger.warning(
+                    f"⚠️ Divergência significativa [{cache_key}]: "
+                    f"cache={cached_num}, api={api_num}, diff={pct_diff:.2f}%"
+                )
+                return False
+            
+            return True
+            
+        except (ValueError, TypeError):
+            # Comparação string
+            if cached_value != api_value:
+                logger.warning(
+                    f"⚠️ Divergência string [{cache_key}]: cache={cached_value}, api={api_value}"
+                )
+                return False
+            
+            return True
+    
+    @staticmethod
+    def _is_invalid_value(value: Any) -> bool:
+        """Verifica se valor é inválido (null, empty, NaN, etc.)"""
+        if value in DataValidator.INVALID_VALUES:
+            return True
+        
+        # Verificar string
+        if isinstance(value, str) and not value.strip():
+            return True
+        
+        return False
+    
+    @staticmethod
+    def _can_convert_to_float(value: Any) -> bool:
+        """Verifica se valor pode ser convertido para float"""
+        try:
+            float(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+    
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        """Converte valor para float de forma segura, retorna None se falhar"""
+        try:
+            result = float(value)
+            # Verificar se não é NaN ou Infinity
+            if result != result or result == float('inf') or result == float('-inf'):
+                return None
+            return result
+        except (ValueError, TypeError):
+            return None
+
 class BinanceClientManager:
     def __init__(self):
+        # ✅ PR1.2: Inicializar validador de dados
+        self.data_validator = DataValidator()
+        
+        # Estatísticas de validação
+        self.validation_stats = {
+            'total_validations': 0,
+            'validation_errors': 0,
+            'cache_divergences': 0,
+            'last_validation_time': None
+        }
         settings = get_settings()
         self.api_key = settings.BINANCE_API_KEY
         self.api_secret = settings.BINANCE_API_SECRET
@@ -49,6 +334,24 @@ class BinanceClientManager:
         # Position mode cache (False = One-Way, True = Hedge)
         self._dual_side_mode: Optional[bool] = None
         
+        # ✅ PASSO 3: CONNECTION POOLING PARA BINANCE API
+        # Criar PoolManager otimizado para múltiplas conexões simultâneas
+        try:
+            self.http_pool = PoolManager(
+                num_pools=getattr(settings, "BINANCE_MAX_KEEPALIVE", 20),
+                maxsize=getattr(settings, "BINANCE_MAX_CONNECTIONS", 100),
+                timeout=getattr(settings, "BINANCE_CONNECTION_TIMEOUT", 10),
+                retries=Retry(
+                    total=3,
+                    backoff_factor=0.5,
+                    status_forcelist=[502, 503, 504]
+                )
+            )
+            logger.info(f"✅ HTTP Pool criado: maxsize={self.http_pool.poolmanager.maxsize}")
+        except Exception as e:
+            logger.warning(f"Pool de conexões não disponível: {e}")
+            self.http_pool = None
+        
         # Inicializar cliente Binance
         try:
             if self.testnet:
@@ -60,9 +363,29 @@ class BinanceClientManager:
                 # URL CORRETA do testnet para futuros (com HTTPS)
                 self.client.FUTURES_URL = 'https://testnet.binancefuture.com'
                 self.client.FUTURES_STREAM_URL = 'wss://testnet.binancefuture.com'
+                
+                # ✅ PASSO 3: Injetar pool de conexões no cliente
+                if self.http_pool:
+                    try:
+                        self.client.session.mount('https://', self.http_pool)
+                        self.client.session.mount('http://', self.http_pool)
+                        logger.info("✅ Connection pool injetado no cliente Binance TESTNET")
+                    except Exception as e:
+                        logger.warning(f"Pool não injetado: {e}")
+                
                 logger.info("Cliente Binance inicializado no TESTNET (HTTPS)")
             else:
                 self.client = Client(self.api_key, self.api_secret)
+                
+                # ✅ PASSO 3: Injetar pool de conexões no cliente
+                if self.http_pool:
+                    try:
+                        self.client.session.mount('https://', self.http_pool)
+                        self.client.session.mount('http://', self.http_pool)
+                        logger.info("✅ Connection pool injetado no cliente Binance PRODUÇÃO")
+                    except Exception as e:
+                        logger.warning(f"Pool não injetado: {e}")
+                
                 logger.info("Cliente Binance inicializado em PRODUÇÃO")
         except Exception as e:
             logger.error(f"Falha ao inicializar cliente Binance (provavelmente erro de rede ou região): {e}")
@@ -159,14 +482,51 @@ class BinanceClientManager:
                     raise
 
     async def get_account_balance(self):
-        """Retorna saldo da conta de futuros com retries e cache (10s TTL)"""
+        """Retorna saldo da conta de futuros com retries, cache (10s TTL) e validação de dados"""
         cache_key = "binance:account:balance"
         
         async def _fetch():
             try:
+                # ✅ PR1.2: Obter valor em cache para comparação de divergência
+                cached_value = None
+                if self.cache_enabled and self.redis:
+                    try:
+                        cached_str = await self.redis.get(cache_key)
+                        if cached_str:
+                            cached_value = json.loads(cached_str)
+                    except Exception:
+                        pass
+                
                 account = await self._retry_call(self.client.futures_account)
+                
+                # ✅ PR1.2: Validar resposta da API
+                self.validation_stats['total_validations'] += 1
+                self.validation_stats['last_validation_time'] = datetime.utcnow().isoformat()
+                
+                is_valid, validation_error = self.data_validator.validate_api_response(
+                    'futures_account', account
+                )
+                
+                if not is_valid:
+                    self.validation_stats['validation_errors'] += 1
+                    logger.error(f"❌ Validação falhou em get_account_balance: {validation_error.reason}")
+                    # Continuar mesmo com erro (fail-soft)
+                
                 total_balance = float(account['totalWalletBalance'])
                 available_balance = float(account['availableBalance'])
+
+                # ✅ PR1.2: Comparar cache vs API
+                if cached_value and 'total_balance' in cached_value:
+                    cache_total = float(cached_value['total_balance'])
+                    if not self.data_validator.compare_cache_vs_api(
+                        cache_key,
+                        cache_total,
+                        total_balance,
+                        tolerance_pct=5.0
+                    ):
+                        self.validation_stats['cache_divergences'] += 1
+                        # Invalidar cache se divergência significativa
+                        await self.invalidate_cache(cache_key)
 
                 logger.debug(f"Saldo Total: {total_balance} USDT")
                 logger.debug(f"Saldo Disponivel: {available_balance} USDT")
@@ -186,13 +546,52 @@ class BinanceClientManager:
         return await self._cached_call(cache_key, ttl=10, fetch_fn=_fetch)
     
     async def get_symbol_price(self, symbol: str):
-        """Retorna preço atual de um símbolo com retries e cache (2s TTL)"""
+        """Retorna preço atual de um símbolo com retries, cache (2s TTL) e validação de dados"""
         cache_key = f"binance:price:{symbol}"
         
         async def _fetch():
             try:
+                # ✅ PR1.2: Obter valor em cache para comparação de divergência
+                cached_value = None
+                if self.cache_enabled and self.redis:
+                    try:
+                        cached_str = await self.redis.get(cache_key)
+                        if cached_str:
+                            cached_value = json.loads(cached_str)
+                    except Exception:
+                        pass
+                
                 ticker = await self._retry_call(self.client.futures_symbol_ticker, symbol=symbol)
+                
+                # ✅ PR1.2: Validar resposta da API
+                self.validation_stats['total_validations'] += 1
+                
+                is_valid, validation_error = self.data_validator.validate_api_response(
+                    'futures_symbol_ticker', ticker
+                )
+                
+                if not is_valid:
+                    self.validation_stats['validation_errors'] += 1
+                    logger.warning(f"⚠️ Validação falhou em get_symbol_price({symbol}): {validation_error.reason}")
+                
                 price = float(ticker['price'])
+                
+                # ✅ PR1.2: Validar range de preço (não pode ser negativo ou extremamente baixo)
+                if not self.data_validator.validate_numeric_range(ticker, 'price', min_val=0.000001):
+                    logger.error(f"❌ Preço inválido para {symbol}: {price}")
+                    return None
+                
+                # ✅ PR1.2: Comparar cache vs API
+                if cached_value is not None:
+                    cached_price = float(cached_value)
+                    if not self.data_validator.compare_cache_vs_api(
+                        cache_key,
+                        cached_price,
+                        price,
+                        tolerance_pct=2.0  # 2% tolerância para preço
+                    ):
+                        self.validation_stats['cache_divergences'] += 1
+                
                 logger.debug(f"Preco de {symbol}: {price}")
                 return price
             except BinanceAPIException as e:

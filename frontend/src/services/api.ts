@@ -82,6 +82,7 @@ export type DailyStats = {
     funding: number;
     net_realized_pnl: number;
     unrealized_pnl: number;
+    daily_net_pnl: number; // ✅ P&L diário real (realizado + não realizado)
     net_pnl: number;
     total_wallet: number;
     available_balance: number;
@@ -545,6 +546,34 @@ export interface HistoryAnalysis {
 
 export async function getHistoryAnalysis(): Promise<HistoryAnalysis> {
   const res = await http.get("/api/trading/history/analysis");
+  return unwrap(res);
+}
+
+// Sniper Operations
+export interface SniperTrade {
+  id: number;
+  symbol: string;
+  direction: string;
+  entry_price: number;
+  exit_price?: number;
+  quantity: number;
+  pnl?: number;
+  pnl_percentage?: number;
+  opened_at: string;
+  closed_at?: string;
+  status: 'open' | 'closed';
+  is_sniper: boolean;
+}
+
+export interface SniperStats {
+  total_sniper_trades: number;
+  sniper_pnl_total: number;
+  sniper_win_rate: number;
+  active_sniper_positions: number;
+}
+
+export async function getSniperTrades(limit: number = 50): Promise<{ trades: SniperTrade[]; stats: SniperStats }> {
+  const res = await http.get("/api/trading/sniper/trades", { params: { limit } });
   return unwrap(res);
 }
 

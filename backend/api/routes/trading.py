@@ -733,20 +733,29 @@ async def get_daily_stats():
     try:
         from datetime import datetime, timedelta, timezone
 
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        # ✅ CORREÇÃO: Usar UTC para ambos DB e Exchange
         today_start_utc = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
+        # ✅ CORREÇÃO: Filtrar trades por data UTC
         trades = db.query(Trade).filter(
-            Trade.closed_at >= today_start,
+            Trade.closed_at >= today_start_utc,
             Trade.status == 'closed'
         ).all()
 
-        total_pnl = sum(t.pnl or 0 for t in trades) if trades else 0
-        winning_trades = [t for t in trades if (t.pnl or 0) > 0] if trades else []
-        win_rate = (len(winning_trades) / len(trades)) * 100 if trades else 0
-
-        best_trade = max(trades, key=lambda t: t.pnl or 0) if trades else None
-        worst_trade = min(trades, key=lambda t: t.pnl or 0) if trades else None
+        # ✅ CORREÇÃO: Se não houver trades fechados hoje, usar P&L da exchange
+        if not trades:
+            logger.info("📊 Nenhum trade fechado hoje no DB. Usando P&L da exchange.")
+            total_pnl = 0
+            winning_trades = []
+            win_rate = 0
+            best_trade = None
+            worst_trade = None
+        else:
+            total_pnl = sum(t.pnl or 0 for t in trades)
+            winning_trades = [t for t in trades if (t.pnl or 0) > 0]
+            win_rate = (len(winning_trades) / len(trades)) * 100 if trades else 0
+            best_trade = max(trades, key=lambda t: t.pnl or 0)
+            worst_trade = min(trades, key=lambda t: t.pnl or 0)
 
         balance_info = await binance_client.get_account_balance()
         total_balance = balance_info.get('total_balance', 0) if balance_info else 0
@@ -850,7 +859,7 @@ async def get_daily_stats():
                     "symbol": worst_trade.symbol,
                     "pnl": worst_trade.pnl or 0
                 } if worst_trade else {},
-                "day_start_local": today_start.isoformat()
+                "day_start_local": today_start_utc.isoformat()
             },
             "exchange": {
                 "realized_pnl": realized_pnl,
@@ -1006,6 +1015,24 @@ async def close_position_exchange(symbol: str):
             trade.closed_at = datetime.now()
             db.commit()
 
+        try:
+            if trade:
+                await telegram_notifier.notify_trade_closed({
+                    "symbol": trade.symbol,
+                    "direction": trade.direction,
+                    "entry_price": float(trade.entry_price or 0),
+                    "exit_price": float(close_price),
+                    "pnl": float(trade.pnl or 0),
+                    "pnl_percentage": float(trade.pnl_percentage or 0),
+                    "reason": "Manual (Front)"
+                })
+            else:
+                await telegram_notifier.send_message(
+                    f"✅ Posição fechada manualmente\n\nSímbolo: {pos['symbol']}\nPreço: {close_price:.6f}"
+                )
+        except Exception:
+            pass
+
         return {
             "success": True,
             "message": f"Posição {pos['symbol']} fechada na exchange",
@@ -1051,6 +1078,13 @@ async def set_position_stop_loss(symbol: str, stop_price: Optional[float] = None
         symbol_info=symbol_info,
         position_side=position_side
     )
+    if res.get("success"):
+        try:
+            await telegram_notifier.send_message(
+                f"🛑 Stop Loss configurado\n\nSímbolo: {pos['symbol']}\nPreço: {float(stop_price):.6f}"
+            )
+        except Exception:
+            pass
     return {"success": res.get("success"), "stop_price": float(stop_price), "result": res}
 
 
@@ -1087,6 +1121,13 @@ async def set_position_take_profit(symbol: str, take_profit_price: Optional[floa
         symbol_info=symbol_info,
         position_side=position_side
     )
+    if res.get("success"):
+        try:
+            await telegram_notifier.send_message(
+                f"🎯 Realização de lucro configurada\n\nSímbolo: {pos['symbol']}\nPreço: {float(take_profit_price):.6f}"
+            )
+        except Exception:
+            pass
     return {"success": res.get("success"), "take_profit_price": float(take_profit_price), "result": res}
 
 
@@ -1130,6 +1171,14 @@ async def set_position_breakeven(symbol: str):
             trade.breakeven_stop_activated = True
             db.commit()
 
+        if res.get("success"):
+            try:
+                await telegram_notifier.send_message(
+                    f"🛡️ Segurança de lucro (Breakeven) configurada\n\nSímbolo: {pos['symbol']}\nPreço: {float(breakeven):.6f}"
+                )
+            except Exception:
+                pass
+
         return {"success": res.get("success"), "breakeven_price": float(breakeven), "result": res}
     except Exception as e:
         db.rollback()
@@ -1167,6 +1216,15 @@ async def set_position_trailing_stop(symbol: str):
         symbol_info=symbol_info,
         position_side=position_side
     )
+    if res.get("success"):
+        try:
+            callback_rate = res.get("callback_rate")
+            rate_text = f"{float(callback_rate):.1f}%" if callback_rate is not None else "auto"
+            await telegram_notifier.send_message(
+                f"🧭 Trailing Stop configurado\n\nSímbolo: {pos['symbol']}\nCallback: {rate_text}"
+            )
+        except Exception:
+            pass
     return {"success": res.get("success"), "result": res}
 
 
@@ -1801,5 +1859,57 @@ async def get_trade_history(limit: int = 50):
             }
             for t in trades
         ])
+    finally:
+        db.close()
+
+
+@router.get("/sniper/trades")
+async def get_sniper_trades(limit: int = 50):
+    """Retorna trades do tipo sniper e estatísticas"""
+    db = SessionLocal()
+    try:
+        # Buscar trades com is_sniper=True
+        sniper_trades = db.query(Trade).filter(
+            Trade.is_sniper == True
+        ).order_by(Trade.opened_at.desc()).limit(limit).all()
+        
+        # Calcular estatísticas
+        all_sniper = db.query(Trade).filter(Trade.is_sniper == True).all()
+        
+        total_sniper_trades = len(all_sniper)
+        closed_sniper = [t for t in all_sniper if t.status == 'closed']
+        open_sniper = [t for t in all_sniper if t.status == 'open']
+        
+        sniper_pnl_total = sum(t.pnl or 0 for t in closed_sniper)
+        sniper_wins = [t for t in closed_sniper if (t.pnl or 0) > 0]
+        sniper_win_rate = (len(sniper_wins) / len(closed_sniper)) * 100 if closed_sniper else 0
+        
+        stats = {
+            "total_sniper_trades": total_sniper_trades,
+            "sniper_pnl_total": float(sniper_pnl_total),
+            "sniper_win_rate": float(sniper_win_rate),
+            "active_sniper_positions": len(open_sniper)
+        }
+        
+        return {
+            "trades": _to_native([
+                {
+                    "id": t.id,
+                    "symbol": t.symbol,
+                    "direction": t.direction,
+                    "entry_price": t.entry_price,
+                    "exit_price": t.exit_price,
+                    "quantity": t.quantity,
+                    "pnl": t.pnl,
+                    "pnl_percentage": t.pnl_percentage,
+                    "opened_at": str(t.opened_at) if t.opened_at else None,
+                    "closed_at": str(t.closed_at) if t.closed_at else None,
+                    "status": t.status,
+                    "is_sniper": t.is_sniper
+                }
+                for t in sniper_trades
+            ]),
+            "stats": _to_native(stats)
+        }
     finally:
         db.close()

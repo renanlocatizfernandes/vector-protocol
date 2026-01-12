@@ -1,9 +1,14 @@
 import logging
 import sys
 import json
+import os
 from datetime import datetime
 import redis
 from config.settings import get_settings
+
+# Criar diretório de logs se não existir
+LOGS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'logs')
+os.makedirs(LOGS_DIR, exist_ok=True)
 
 class JSONFormatter(logging.Formatter):
     def format(self, record):
@@ -89,9 +94,8 @@ def setup_logger(name: str) -> logging.Logger:
     console_handler.setFormatter(formatter)
     
     # File handler
-    file_handler = logging.FileHandler(
-        f'/logs/{name}_{datetime.now().strftime("%Y%m%d")}.log'
-    )
+    log_file_path = os.path.join(LOGS_DIR, f'{name}_{datetime.now().strftime("%Y%m%d")}.log')
+    file_handler = logging.FileHandler(log_file_path)
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
     

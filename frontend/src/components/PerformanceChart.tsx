@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getRealizedDailyStats, type RealizedDailyPoint } from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, DollarSign } from 'lucide-react';
@@ -93,28 +93,14 @@ export const PerformanceChart: React.FC = () => {
                     <span className="text-xs text-gray-500">P&L Acumulado (Exchange)</span>
                 </div>
             </CardHeader>
-            <CardContent className="flex-1 min-h-[300px] pt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={data}>
-                        <defs>
-                            <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                                <stop
-                                    offset="5%"
-                                    stopColor={isPositive ? '#00C853' : '#DC3545'}
-                                    stopOpacity={0.3}
-                                />
-                                <stop
-                                    offset="95%"
-                                    stopColor={isPositive ? '#00C853' : '#DC3545'}
-                                    stopOpacity={0}
-                                />
-                            </linearGradient>
-                        </defs>
+            <CardContent className="flex-1 min-h-[280px] pt-4">
+                <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
                         <XAxis
                             dataKey="date"
                             stroke="#6B7280"
-                            fontSize={12}
+                            fontSize={11}
                             tickLine={false}
                             axisLine={false}
                             minTickGap={30}
@@ -122,7 +108,7 @@ export const PerformanceChart: React.FC = () => {
                         />
                         <YAxis
                             stroke="#6B7280"
-                            fontSize={12}
+                            fontSize={11}
                             tickLine={false}
                             axisLine={false}
                             tickFormatter={value => `$${value.toFixed(0)}`}
@@ -134,22 +120,22 @@ export const PerformanceChart: React.FC = () => {
                                 borderColor: '#E5E7EB',
                                 color: '#374151',
                                 borderRadius: '8px',
-                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                                padding: '8px'
                             }}
                             itemStyle={{ color: '#374151', fontWeight: 600 }}
-                            formatter={(value: number, name: string) => [`$${value.toFixed(2)}`, name]}
+                            formatter={(value: number) => `$${value.toFixed(2)}`}
                             labelStyle={{ color: '#6B7280', fontWeight: 500 }}
                         />
-                        <Area
+                        <Line
                             type="monotone"
                             dataKey="cumulative"
-                            stroke={isPositive ? '#00C853' : '#DC3545'}
+                            stroke={isPositive ? '#10B981' : '#EF4444'}
                             strokeWidth={2}
-                            fillOpacity={1}
-                            fill="url(#colorPnl)"
-                            activeDot={{ r: 5, strokeWidth: 2, stroke: '#FFFFFF', fill: isPositive ? '#00C853' : '#DC3545' }}
+                            dot={false}
+                            activeDot={{ r: 4, strokeWidth: 2, stroke: '#FFFFFF', fill: isPositive ? '#10B981' : '#EF4444' }}
                         />
-                    </AreaChart>
+                    </LineChart>
                 </ResponsiveContainer>
             </CardContent>
         </Card>

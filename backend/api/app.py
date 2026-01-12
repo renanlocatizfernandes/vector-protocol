@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 from models.database import engine, Base, SessionLocal
 from api.models import trades, trading_rules
 from api.routes import positions, config, market, trading, system, rules
+from api.routes import database_config
 from api import backtesting, websocket
+from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
 from config.settings import get_settings
 from sqlalchemy import text
@@ -52,6 +54,8 @@ async def lifespan(app: FastAPI):
     logger.info("Criando tabelas do banco de dados...")
     try:
         Base.metadata.create_all(bind=engine)
+        # ✅ Criar tabelas do database de configurações
+        ConfigBase.metadata.create_all(bind=engine)
         logger.info("✅ Tabelas criadas com sucesso!")
     except Exception as e:
         logger.error(f"❌ Erro ao criar tabelas: {e}")
@@ -174,6 +178,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Falha ao iniciar watchdog do bot: {e}")
 
+    # ✅ Telegram Bot Command Handler (sempre roda, independente do bot de trading)
+    try:
+        from modules.telegram_bot import telegram_bot
+        await telegram_bot.start()
+        logger.info("🤖 Telegram Bot Command Handler iniciado!")
+    except Exception as e:
+        logger.error(f"Falha ao iniciar Telegram Bot: {e}")
+
     # WebSocket Redis Listener
     try:
         app.state.redis_listener_task = asyncio.create_task(websocket.redis_event_listener())
@@ -220,6 +232,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Falha ao desligar Redis listener: {e}")
 
+    # ✅ Parar Telegram Bot
+    try:
+        from modules.telegram_bot import telegram_bot
+        await telegram_bot.stop()
+        logger.info("🤖 Telegram Bot parado")
+    except Exception as e:
+        logger.error(f"Falha ao parar Telegram Bot: {e}")
+
     logger.info("🔴 Encerrando aplicação...")
 
 
@@ -256,6 +276,9 @@ app.include_router(backtesting.router, prefix="/api/backtest", tags=["Backtestin
 app.include_router(system.router, prefix="/api/system", tags=["System"])
 # ✅ Rules: Trading rules management (Phase 3)
 app.include_router(rules.router, tags=["Rules"])
+
+# ✅ NOVA: Database de Configurações
+app.include_router(database_config.router, prefix="/api/database-config", tags=["Database Config"])
 
 
 @app.get("/", tags=["Health"])

@@ -30,7 +30,13 @@
       "Bash(docker compose:*)",
       "Bash(git commit:*)",
       "Bash(npm test)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(for file in ConfigBot.tsx Supervisor.tsx Logs.tsx)",
+      "Bash(do if [ -f \"$file\" ])",
+      "Bash(then echo \"$file exists\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(git reset:*)"
     ]
   }
 }

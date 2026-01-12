@@ -374,7 +374,8 @@ class AutonomousBot:
 
         position_monitor.start_monitoring()
         self.loops.start()
-        asyncio.create_task(telegram_bot.start())
+        if not telegram_bot.running and not getattr(telegram_bot, "_starting", False):
+            asyncio.create_task(telegram_bot.start())
         asyncio.create_task(supervisor.start_monitoring()) # ✅ Iniciar Supervisor
         await self._sync_positions_with_binance()
 
@@ -427,6 +428,18 @@ class AutonomousBot:
                             additional_qty = trade.quantity * self.pyramiding_multiplier
                             symbol_info = await binance_client.get_symbol_info(trade.symbol)
                             additional_qty = round_step_size(additional_qty, symbol_info['step_size'])
+                            
+                            # ✅ CORREÇÃO: Verificar notional mínimo da Binance ($5)
+                            current_price = trade.current_price or trade.entry_price
+                            notional_value = additional_qty * current_price
+                            min_notional = 5.0  # Mínimo da Binance
+                            
+                            if notional_value < min_notional:
+                                # Aumentar quantidade para atingir mínimo
+                                logger.warning(f"⚠️ Pyramiding {trade.symbol}: notional ${notional_value:.2f} < ${min_notional}. Ajustando quantidade...")
+                                additional_qty = round_step_size((min_notional / current_price) * 1.05, symbol_info['step_size'])
+                                notional_value = additional_qty * current_price
+                                logger.info(f"✅ Quantidade ajustada: {additional_qty:.6f} (notional: ${notional_value:.2f})")
                             
                             side = 'BUY' if trade.direction == 'LONG' else 'SELL'
                             
@@ -546,11 +559,14 @@ class AutonomousBot:
                             continue
                             
                         redis_key = f"dca_count:{trade.symbol}"
-                        current_dca_count = 0
+                        current_dca_count = int(getattr(trade, "dca_count", 0) or 0)
                         if redis_client and redis_client.client:
                             val = redis_client.client.get(redis_key)
                             if val:
-                                current_dca_count = int(val)
+                                try:
+                                    current_dca_count = max(current_dca_count, int(val))
+                                except Exception:
+                                    pass
                         if current_dca_count >= max_dca_count:
                             continue
                             
@@ -573,7 +589,8 @@ class AutonomousBot:
                             reason = f"RSI Overbought ({rsi:.1f})"
                                 
                         if should_dca:
-                            logger.info(f"📉 EXECUTANDO DCA #{current_dca_count + 1} para {trade.symbol}: {reason}")
+                            new_dca_count = current_dca_count + 1
+                            logger.info(f"📉 EXECUTANDO DCA #{new_dca_count} para {trade.symbol}: {reason}")
                             
                             dca_qty = trade.quantity * dca_multiplier
                             symbol_info = await binance_client.get_symbol_info(trade.symbol)
@@ -607,12 +624,15 @@ class AutonomousBot:
                                 
                                 trade.quantity = new_total_qty
                                 trade.entry_price = new_avg_entry
+                                trade.dca_count = new_dca_count
                                 db.commit()
                                 
                                 if redis_client and redis_client.client:
-                                    redis_client.client.set(redis_key, str(current_dca_count + 1), ex=86400*7)
+                                    redis_client.client.set(redis_key, str(new_dca_count), ex=86400*7)
                                 
-                                await telegram_notifier.send_message(f"📉 SMART DCA #{current_dca_count + 1}\n\n{trade.symbol} {trade.direction}\nMotivo: {reason}\nNovo Preço Médio: {new_avg_entry:.4f}")
+                                await telegram_notifier.send_message(
+                                    f"📉 SMART DCA #{new_dca_count}\n\n{trade.symbol} {trade.direction}\nMotivo: {reason}\nNovo Preço Médio: {new_avg_entry:.4f}"
+                                )
                             else:
                                 logger.info(f"🎯 DRY RUN: DCA simulado para {trade.symbol}")
                         
@@ -714,13 +734,25 @@ class AutonomousBot:
         target = max(1, int(count))
         account_balance = await self._get_account_balance()
         
+        # ✅ CORREÇÃO: Sniper SEM restrição de whitelist - usa market_scanner para obter candidatos
         try:
             candidate_symbols = await market_scanner.get_sniper_candidates()
-            if not candidate_symbols: raise ValueError("No candidates")
-        except Exception:
-            logger.warning("⚠️ Nenhum candidato Sniper encontrado. Usando fallback.")
-            fallback = list(getattr(settings, "SYMBOL_WHITELIST", [])) or list(getattr(settings, "TESTNET_WHITELIST", []))
-            candidate_symbols = [s.upper() for s in fallback if str(s).strip()] or ["BTCUSDT","ETHUSDT","BNBUSDT"]
+            if not candidate_symbols: 
+                logger.warning("⚠️ Nenhum candidato Sniper encontrado no scanner. Buscando símbolos ativos...")
+                # Fallback: buscar top 20 símbolos mais negociados da Binance
+                ticker_24h = await binance_client.client.futures_ticker()
+                if ticker_24h:
+                    # Filtrar apenas USDT e ordenar por volume
+                    candidate_symbols = [
+                        t['symbol'] for t in sorted(ticker_24h, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
+                        if t['symbol'].endswith('USDT') and float(t.get('quoteVolume', 0)) > 1000000  # Mínimo $1M volume 24h
+                    ][:30]  # Top 30
+                else:
+                    candidate_symbols = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]
+                logger.info(f"📊 Sniper usando {len(candidate_symbols)} símbolos ativos do mercado")
+        except Exception as e:
+            logger.warning(f"⚠️ Erro ao buscar candidatos Sniper: {e}. Usando lista padrão.")
+            candidate_symbols = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","MATICUSDT"]
 
         opened = 0
         for sym in candidate_symbols:
@@ -744,7 +776,7 @@ class AutonomousBot:
 
                 exec_res = await order_executor.execute_signal(signal=signal, account_balance=account_balance, open_positions=len(open_positions_exch) + opened, dry_run=self.dry_run)
                 if bool(exec_res.get("success")):
-                    opened += 1
+                    opened +=1
                     logger.info(f"✅ Sniper aberto: {sym} {direction} @ {exec_res.get('entry_price') or exec_res.get('avg_price')}")
                 else:
                     logger.warning(f"❌ Sniper rejeitado {sym}: {exec_res.get('reason')}")

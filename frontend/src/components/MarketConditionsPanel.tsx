@@ -44,11 +44,11 @@ export const MarketConditionsPanel: React.FC = () => {
     return (
         <Card className="glass-card border-white/10 bg-white/5">
             <CardHeader>
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <CardTitle className="text-lg font-semibold flex items-center gap-2 text-slate-900">
                     <TrendingUp className="h-5 w-5 text-warning" />
                     Market Conditions
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="text-slate-600">
                     Volatility Index:{' '}
                     <span className={cn(
                         "font-semibold",
@@ -61,12 +61,12 @@ export const MarketConditionsPanel: React.FC = () => {
             <CardContent>
                 <div className="space-y-4">
                     <div>
-                        <h4 className="text-xs text-muted-foreground uppercase mb-2">High Funding Rates</h4>
+                        <h4 className="text-xs text-slate-600 font-semibold uppercase mb-2">High Funding Rates</h4>
                         {conditions.high_funding.length > 0 ? (
                             <div className="space-y-1">
                                 {conditions.high_funding.map((item, idx) => (
                                     <div key={idx} className="flex justify-between items-center text-sm bg-white/5 p-2 rounded">
-                                        <span className="font-mono text-white">{item.symbol}</span>
+                                        <span className="font-mono text-slate-900">{item.symbol}</span>
                                         <span className={cn(
                                             "font-mono font-semibold",
                                             item.funding_rate_pct > 0 ? 'text-success' : 'text-danger'
@@ -77,12 +77,12 @@ export const MarketConditionsPanel: React.FC = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-sm text-muted-foreground">No extreme funding rates</p>
+                            <p className="text-sm text-slate-600">No extreme funding rates</p>
                         )}
                     </div>
 
                     <div>
-                        <h4 className="text-xs text-muted-foreground uppercase mb-2">Trending Symbols</h4>
+                        <h4 className="text-xs text-slate-600 font-semibold uppercase mb-2">Trending Symbols</h4>
                         {conditions.trending_symbols.length > 0 ? (
                             <div className="space-y-1">
                                 {conditions.trending_symbols.map((item, idx) => (
@@ -93,7 +93,7 @@ export const MarketConditionsPanel: React.FC = () => {
                                             ) : (
                                                 <TrendingDown className="w-4 h-4 text-danger" />
                                             )}
-                                            <span className="font-mono text-white">{item.symbol}</span>
+                                            <span className="font-mono text-slate-900">{item.symbol}</span>
                                         </div>
                                         <span className={cn(
                                             "font-mono font-semibold",
@@ -105,7 +105,7 @@ export const MarketConditionsPanel: React.FC = () => {
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-sm text-muted-foreground">No trending symbols</p>
+                            <p className="text-sm text-slate-600">No trending symbols</p>
                         )}
                     </div>
                 </div>

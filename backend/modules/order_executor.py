@@ -1371,7 +1371,12 @@ class OrderExecutor:
                 **order_params
             )
             logger.info(f"✅ Take Profit LIMIT configurado: {price:.4f}")
-            return {"success": True, "order_id": order['orderId']}
+            return {
+                "success": True,
+                "order_id": order['orderId'],
+                "callback_rate": float(callback_rate),
+                "working_type": workingType
+            }
         except BinanceAPIException as e:
             if e.code == -4120:
                 logger.warning(f"⚠️ Exchange recusou Limit TP ({e.message}). Dependendo do Monitor de Posição.")

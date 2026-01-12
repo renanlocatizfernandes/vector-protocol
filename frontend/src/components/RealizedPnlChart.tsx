@@ -69,9 +69,9 @@ export const RealizedPnlChart: React.FC = () => {
                     <span className="text-xs text-muted-foreground">Last 7 days</span>
                 </div>
             </CardHeader>
-            <CardContent className="flex-1 min-h-[220px] pt-4 z-10">
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data}>
+            <CardContent className="flex-1 min-h-[280px] pt-4 z-10">
+                <ResponsiveContainer width="100%" height={280}>
+                    <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                         <XAxis
                             dataKey="date"
                             stroke="#9aa3b2"

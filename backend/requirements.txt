@@ -45,4 +45,5 @@ pytest-asyncio==0.24.0
 
 # Utilities
 python-dateutil==2.9.0.post0
-psutil
+psutil==6.1.0
+urllib3==2.2.0
