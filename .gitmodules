@@ -1,0 +1,6 @@
+[submodule ".claude/plugins/claude-code"]
+	path = .claude/plugins/claude-code
+	url = https://github.com/anthropics/claude-code.git
+[submodule ".claude/plugins/claude-design-skill"]
+	path = .claude/plugins/claude-design-skill
+	url = https://github.com/Dammyjay93/claude-design-skill.git
