@@ -273,6 +273,17 @@ export async function testTelegram(): Promise<any> {
   return unwrap(res);
 }
 
+// Database Config
+export async function getDatabaseConfig(key: string): Promise<{ key: string; value: any }> {
+  const res = await http.get(`/api/database-config/${key}`);
+  return unwrap(res);
+}
+
+export async function updateDatabaseConfig(key: string, value: any, reason?: string): Promise<any> {
+  const res = await http.put(`/api/database-config/${key}`, { key, value, reason });
+  return unwrap(res);
+}
+
 // Mercado (básico)
 export async function getSignals(min_score: number = 70): Promise<{ count: number; signals: any[]; scan_count?: number }> {
   const res = await http.get("/api/market/signals", { params: { min_score } });

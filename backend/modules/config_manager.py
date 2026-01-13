@@ -229,12 +229,16 @@ class ConfigManager:
             'SNIPER_SL_PCT',
             'SNIPER_RISK_PER_TRADE',
             'SNIPER_DEFAULT_LEVERAGE',
+            'SNIPER_IGNORE_WHITELIST',
             
             # Scanner Settings
             'SCANNER_MIN_VOLUME_24H',
             'SCANNER_MAX_SYMBOLS',
             'SCANNER_STRICT_WHITELIST',
             'SYMBOL_WHITELIST',
+            'MIN_QUOTE_VOLUME_USDT_24H',
+            'REQUIRED_SCORE_SIDEWAYS',
+            'SIDEWAYS_MIN_VOLUME_RATIO',
             
             # Stop Loss & Take Profit
             'ENABLE_TRAILING_STOP',
@@ -251,6 +255,11 @@ class ConfigManager:
             # Time-Based Exit
             'TIME_EXIT_HOURS',
             'TIME_EXIT_MIN_PROFIT_PCT',
+            'TIME_EXIT_ENABLED',
+            'TIME_EXIT_MIN_PNL_PCT',
+            'TIME_EXIT_MAX_PNL_PCT',
+            'TIME_EXIT_REQUIRE_TREND_AGAINST',
+            'TIME_EXIT_MIN_VOLUME_RATIO',
             
             # Virtual Balance
             'VIRTUAL_BALANCE_ENABLED',

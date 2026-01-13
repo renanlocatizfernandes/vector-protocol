@@ -136,7 +136,17 @@ class MarketFilter:
             logger.info(f"⚖️ {symbol}: Score {signal['score']:.0f} < {self.required_score_sideways} (SIDEWAYS threshold)")
             return False
 
-        # ✅ NOVO: Ajuste extra cruzando PERFIL do símbolo x tendência do BTC
+        # Bloquear entradas em lateral quando volume esta fraco
+        if trend == 'SIDEWAYS':
+            min_volume_ratio = float(getattr(self.settings, 'SIDEWAYS_MIN_VOLUME_RATIO', 0.8))
+            if market_sentiment.get('volume_ratio', 1) < min_volume_ratio:
+                logger.info(
+                    f"Sideways com volume fraco ({market_sentiment.get('volume_ratio', 1):.2f}x < {min_volume_ratio}x); "
+                    f"{symbol} bloqueado"
+                )
+                return False
+
+        # Ajuste extra cruzando perfil do simbolo x tendencia do BTC
         if not self._validate_symbol_profile_vs_trend(symbol, direction, trend):
             return False
         

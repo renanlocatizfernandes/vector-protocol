@@ -93,16 +93,13 @@ export const BotStatus: React.FC = () => {
     };
 
     const isRunning = !!bot?.running;
-    // ✅ CORREÇÃO: Usar exchange.daily_net_pnl para P&L diário (valor real de hoje)
-    const dbPnl = daily?.exchange?.daily_net_pnl ?? daily?.db?.total_pnl ?? 0;
-    const dbWinRate = daily?.db?.win_rate ?? daily?.win_rate ?? 0;
-    const dbTrades = daily?.db?.trades_count ?? daily?.trades_count ?? 0;
+    const exDaily = daily?.exchange?.daily_net_pnl ?? 0;
     const exRealized = daily?.exchange?.net_realized_pnl ?? 0;
     const exUnrealized = daily?.exchange?.unrealized_pnl ?? 0;
     const exFees = daily?.exchange?.fees ?? 0;
     const exFunding = daily?.exchange?.funding ?? 0;
     const exNet = daily?.exchange?.net_pnl ?? (exRealized + exUnrealized);
-    const exTotalWallet = daily?.exchange?.total_wallet ?? daily?.balance ?? 0;
+    const exTotalWallet = daily?.exchange?.total_wallet ?? 0;
     const exAvailable = daily?.exchange?.available_balance ?? 0;
 
     return (
@@ -150,33 +147,33 @@ export const BotStatus: React.FC = () => {
             <CardContent className="space-y-6 p-6">
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* P&L Diário */}
+                    {/* P&L Diario */}
                     <div className={cn(
                         "stat-card relative overflow-hidden group",
-                        dbPnl >= 0 ? "stat-card-success" : "stat-card-danger"
+                        exDaily >= 0 ? "stat-card-success" : "stat-card-danger"
                     )}>
                         <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-transparent to-white/50 rounded-bl-full opacity-50" />
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-2">
                                 <DollarSign className="w-4 h-4 text-slate-700" />
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">P&L Diário (HOJE)</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">P&L Diario (HOJE)</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                {dbPnl >= 0 ? (
+                                {exDaily >= 0 ? (
                                     <TrendingUp className="w-5 h-5 text-green-600" />
                                 ) : (
                                     <TrendingDown className="w-5 h-5 text-red-600" />
                                 )}
                                 <span className={cn(
                                     "text-2xl font-bold",
-                                    dbPnl >= 0 ? "text-green-700" : "text-red-700"
+                                    exDaily >= 0 ? "text-green-700" : "text-red-700"
                                 )}>
-                                    ${dbPnl.toFixed(2)}
+                                    ${exDaily.toFixed(2)}
                                 </span>
                             </div>
                             <span className="text-xs text-slate-600 font-semibold mt-1 block flex items-center gap-1.5">
                                 <Coins className="w-3 h-3" />
-                                Trades: {dbTrades}
+                                Fonte: Exchange
                             </span>
                         </div>
                     </div>
@@ -187,14 +184,14 @@ export const BotStatus: React.FC = () => {
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-2">
                                 <Activity className="w-4 h-4 text-slate-700" />
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Win Rate (DB)</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Fees + Funding (24h)</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                                    <span className="text-white font-bold text-lg">{dbWinRate.toFixed(0)}%</span>
+                                    <span className="text-white font-bold text-lg">{(exFees + exFunding).toFixed(2)}</span>
                                 </div>
                                 <span className="text-lg font-black text-gradient-blue ml-1">
-                                    {dbWinRate.toFixed(1)}%
+                                    {exFees.toFixed(2)} | {exFunding.toFixed(2)}
                                 </span>
                             </div>
                         </div>
@@ -223,7 +220,7 @@ export const BotStatus: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* Não Realizado */}
+                    {/* Nao Realizado */}
                     <div className={cn(
                         "stat-card relative overflow-hidden group",
                         exUnrealized >= 0 ? "stat-card-success" : "stat-card-danger"
@@ -232,7 +229,7 @@ export const BotStatus: React.FC = () => {
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-2">
                                 <TrendingUp className="w-4 h-4 text-slate-700" />
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Não Realizado</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Nao Realizado</span>
                             </div>
                             <div className={cn(
                                 "text-2xl font-bold",
@@ -243,7 +240,7 @@ export const BotStatus: React.FC = () => {
                         </div>
                     </div>
 
-                    {/* P&L Líquido */}
+                    {/* P&L Liquido */}
                     <div className={cn(
                         "stat-card stat-card-primary relative overflow-hidden group",
                         exNet >= 0 ? "stat-card-success" : "stat-card-danger"
@@ -252,7 +249,7 @@ export const BotStatus: React.FC = () => {
                         <div className="relative z-10">
                             <div className="flex items-center gap-2 mb-2">
                                 <DollarSign className="w-4 h-4 text-slate-700" />
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">P&L Líquido</span>
+                                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">P&L Liquido</span>
                             </div>
                             <div className={cn(
                                 "text-2xl font-bold",
@@ -278,7 +275,7 @@ export const BotStatus: React.FC = () => {
                                 ${exTotalWallet.toFixed(2)}
                             </div>
                             <span className="text-xs text-slate-600 font-semibold mt-1 block">
-                                Disponível: ${exAvailable.toFixed(2)}
+                                Disponivel: ${exAvailable.toFixed(2)}
                             </span>
                         </div>
                     </div>
@@ -325,7 +322,7 @@ export const BotStatus: React.FC = () => {
                         onClick={() => setShowConfig(!showConfig)}
                     >
                         <Settings className="mr-2 h-4 w-4" />
-                        {showConfig ? 'Ocultar Configuração' : 'Configuração Rápida'}
+                        {showConfig ? 'Ocultar Configuracao' : 'Configuracao Rapida'}
                     </Button>
 
                     {/* Configuration Panel */}
@@ -342,7 +339,7 @@ export const BotStatus: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Score Mínimo</label>
+                                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Score Minimo</label>
                                     <Input
                                         type="number"
                                         className="input-modern"
@@ -351,7 +348,7 @@ export const BotStatus: React.FC = () => {
                                     />
                                 </div>
                                 <div className="space-y-2 col-span-2">
-                                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Posições Máx</label>
+                                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">Posicoes Max</label>
                                     <Input
                                         type="number"
                                         className="input-modern"
@@ -366,7 +363,7 @@ export const BotStatus: React.FC = () => {
                                 onClick={handleUpdateConfig} 
                                 disabled={loading}
                             >
-                                <RefreshCw className="mr-2 h-4 w-4" /> Salvar Alterações
+                                <RefreshCw className="mr-2 h-4 w-4" /> Salvar Alteracoes
                             </Button>
                         </div>
                     )}

@@ -226,7 +226,8 @@ class OrderExecutor:
 
         # Enforce whitelist for new executions; monitoring/closing is handled elsewhere.
         wl = [str(x).upper() for x in (getattr(self.settings, "SYMBOL_WHITELIST", []) or []) if str(x).strip()]
-        if wl and bool(getattr(self.settings, "SCANNER_STRICT_WHITELIST", False)):
+        ignore_whitelist = bool(getattr(self.settings, "SNIPER_IGNORE_WHITELIST", False)) and bool(signal.get("sniper"))
+        if wl and bool(getattr(self.settings, "SCANNER_STRICT_WHITELIST", False)) and not ignore_whitelist:
             if str(symbol).upper() not in wl:
                 reason = f"Symbol not in whitelist: {symbol}"
                 logger.warning(f"Whitelist block: {reason}")

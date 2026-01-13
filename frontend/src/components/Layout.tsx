@@ -26,8 +26,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
     const [balance, setBalance] = useState<number | null>(null);
-    const [balanceChange, setBalanceChange] = useState<number>(0);
-    const [balanceChangeLabel, setBalanceChangeLabel] = useState<string>('Daily (DB)');
+    const [balanceChange, setBalanceChange] = useState<number | null>(null);
+    const [balanceChangeLabel, setBalanceChangeLabel] = useState<string>('Net (R+U)');
 
     useEffect(() => {
         const fetchBalance = async () => {
@@ -36,18 +36,19 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 const data = await res.json();
                 const exchangeBalance = data?.exchange?.total_wallet;
                 const netPnl = data?.exchange?.net_pnl;
-                const resolvedBalance = typeof exchangeBalance === 'number' ? exchangeBalance : data?.balance;
-                if (typeof resolvedBalance === 'number') {
+                const resolvedBalance = typeof exchangeBalance === 'number' ? exchangeBalance : null;
+                if (resolvedBalance !== null) {
                     setBalance(resolvedBalance);
+                } else {
+                    setBalance(null);
                 }
-                if (typeof netPnl === 'number' && resolvedBalance) {
+                if (typeof netPnl === 'number' && typeof resolvedBalance === 'number' && resolvedBalance) {
                     const changePct = (netPnl / resolvedBalance) * 100;
                     setBalanceChange(changePct);
                     setBalanceChangeLabel('Net (R+U)');
-                } else if (data && typeof data.total_pnl === 'number' && resolvedBalance) {
-                    const changePct = (data.total_pnl / resolvedBalance) * 100;
-                    setBalanceChange(changePct);
-                    setBalanceChangeLabel('Daily (DB)');
+                } else {
+                    setBalanceChange(null);
+                    setBalanceChangeLabel('Net (R+U)');
                 }
             } catch (e) {
                 console.error('Error fetching balance:', e);
@@ -70,7 +71,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 font-sans text-slate-900 overflow-hidden pattern-grid">
-            {/* 🌟 Premium Animated Background */}
+            {/*  Premium Animated Background */}
             <div className="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-br from-slate-50/50 via-white/50 to-blue-50/50" />
                 <div className="absolute inset-0 animated-bg-subtle" />
@@ -80,7 +81,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <div className="absolute top-1/2 left-1/2 w-[400px] h-[400px] bg-green-500/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '2s' }} />
             </div>
 
-            {/* 💎 Modern Glassmorphism Sidebar */}
+            {/*  Modern Glassmorphism Sidebar */}
             <aside
                 className={cn(
                     "fixed inset-y-0 left-0 z-50 flex flex-col glass-strong border-r border-slate-200/50 shadow-xl shadow-slate-200/50 transition-all duration-500",
@@ -199,7 +200,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 <span className="text-xs text-green-600 font-semibold flex items-center gap-1.5">
                                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full pulse-dot" />
                                     <Zap className="w-3 h-3" />
-                                    Ativo • Operando
+                                    Ativo - Operando
                                 </span>
                             </div>
                         )}
@@ -214,7 +215,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     collapsed ? "pl-20" : "pl-72"
                 )}
             >
-                {/* 💎 Premium Glassmorphism Header */}
+                {/*  Premium Glassmorphism Header */}
                 <header className="h-20 bg-gradient-to-r from-white/90 to-slate-50/90 backdrop-blur-xl border-b border-slate-200/50 sticky top-0 z-40 px-8 flex items-center justify-between shadow-lg shadow-slate-200/30">
                     <div>
                         <div className="flex items-center gap-3">
@@ -247,11 +248,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                             </div>
                             <div className={cn(
                                 "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all duration-300",
-                                balanceChange >= 0
-                                    ? "bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-green-300 shadow-sm shadow-green-500/20"
-                                    : "bg-gradient-to-r from-red-100 to-rose-100 text-red-700 border-red-300 shadow-sm shadow-red-500/20"
+                                balanceChange === null
+                                    ? "bg-slate-100 text-slate-500 border-slate-200"
+                                    : balanceChange >= 0
+                                        ? "bg-gradient-to-r from-green-100 to-emerald-100 text-green-700 border-green-300 shadow-sm shadow-green-500/20"
+                                        : "bg-gradient-to-r from-red-100 to-rose-100 text-red-700 border-red-300 shadow-sm shadow-red-500/20"
                             )} title={balanceChangeLabel}>
-                                {balanceChange >= 0 ? '↑' : '↓'} {Math.abs(balanceChange).toFixed(2)}%
+                                {balanceChange === null
+                                    ? "--"
+                                    : `${balanceChange >= 0 ? "+" : "-"}${Math.abs(balanceChange).toFixed(2)}%`}
                             </div>
                         </div>
 

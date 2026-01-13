@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import {
   getConfig,
   getBotStatus,
+  getDatabaseConfig,
   updateBotConfig,
+  updateDatabaseConfig,
   testTelegram,
   type ConfigResponse,
   type BotStatus
@@ -38,6 +40,7 @@ export default function ConfigBot() {
   const [minScore, setMinScore] = useState<number | "">("");
   const [maxPositions, setMaxPositions] = useState<number | "">("");
   const [symbolsCsv, setSymbolsCsv] = useState<string>("");
+  const [whitelistStrict, setWhitelistStrict] = useState<boolean | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -45,9 +48,10 @@ export default function ConfigBot() {
   useEffect(() => {
     (async () => {
       try {
-        const [c, b] = await Promise.all([
+        const [c, b, wl] = await Promise.all([
           getConfig().catch(() => null),
           getBotStatus().catch(() => null),
+          getDatabaseConfig("SCANNER_STRICT_WHITELIST").catch(() => null),
         ]);
         if (c) setCfg(c);
         if (b) {
@@ -56,6 +60,9 @@ export default function ConfigBot() {
           setMinScore(typeof b?.min_score === "number" ? (b.min_score as number) : "");
           setMaxPositions(typeof b?.max_positions === "number" ? (b.max_positions as number) : "");
           setSymbolsCsv((b?.symbols || []).join(","));
+        }
+        if (wl && typeof wl.value === "boolean") {
+          setWhitelistStrict(wl.value);
         }
       } catch {
         setMsg({ kind: "err", text: "Failed to load configuration" });
@@ -94,6 +101,26 @@ export default function ConfigBot() {
       setMsg({ kind: "ok", text: res?.message || "Telegram OK" });
     } catch (e: any) {
       setMsg({ kind: "err", text: e?.message || "Error sending test" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onToggleWhitelist = async () => {
+    if (whitelistStrict === null) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const nextValue = !whitelistStrict;
+      const res = await updateDatabaseConfig(
+        "SCANNER_STRICT_WHITELIST",
+        nextValue,
+        "Toggle whitelist strict mode"
+      );
+      setWhitelistStrict(nextValue);
+      setMsg({ kind: "ok", text: res?.message || "Whitelist updated" });
+    } catch (e: any) {
+      setMsg({ kind: "err", text: e?.message || "Error updating whitelist" });
     } finally {
       setBusy(false);
     }
@@ -139,7 +166,9 @@ export default function ConfigBot() {
       </div>
 
       <div className="rounded-xl border border-warning/30 bg-warning/10 text-warning px-4 py-3 text-sm">
-        Whitelist enforced: the bot can monitor any open position, but new entries only execute for symbols in the whitelist.
+        {whitelistStrict
+          ? "Whitelist ativa: o bot monitora todas as posicoes, mas novas entradas so executam para simbolos na whitelist."
+          : "Whitelist desativada: o bot pode abrir novas entradas para qualquer simbolo permitido pelo scanner."}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -207,6 +236,22 @@ export default function ConfigBot() {
                 <p className="text-xs text-muted-foreground">
                   Use comma-separated symbols. Apply to restrict scanning to these pairs.
                 </p>
+              </Field>
+              <Field label="Whitelist strict mode">
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2">
+                  <span className="text-sm text-gray-700">
+                    {whitelistStrict ? "Ativa (entrada so whitelist)" : "Desativada (permite tudo)"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant={whitelistStrict ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={onToggleWhitelist}
+                    disabled={busy || whitelistStrict === null}
+                  >
+                    {whitelistStrict ? "Desativar" : "Ativar"}
+                  </Button>
+                </div>
               </Field>
             </div>
 

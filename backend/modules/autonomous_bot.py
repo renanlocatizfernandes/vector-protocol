@@ -685,8 +685,14 @@ class AutonomousBot:
         while self.running:
             supervisor.heartbeat("time_exit_loop")
             try:
-                max_hold_hours = int(getattr(get_settings(), "TIME_EXIT_HOURS", 6))
-                min_profit_pct = float(getattr(get_settings(), "TIME_EXIT_MIN_PROFIT_PCT", 0.5))
+                settings = get_settings()
+                if not getattr(settings, "TIME_EXIT_ENABLED", True):
+                    await asyncio.sleep(1)
+                    continue
+
+                max_hold_hours = int(getattr(settings, "TIME_EXIT_HOURS", 4))
+                min_pnl = float(getattr(settings, "TIME_EXIT_MIN_PNL_PCT", -0.8))
+                max_pnl = float(getattr(settings, "TIME_EXIT_MAX_PNL_PCT", -2.0))
                 
                 db = SessionLocal()
                 try:
@@ -705,13 +711,24 @@ class AutonomousBot:
                         hold_duration = now - entry_time
                         hold_hours = hold_duration.total_seconds() / 3600
                         
-                        if hold_hours > max_hold_hours and trade.pnl_percentage < min_profit_pct:
-                            logger.info(f"⏱️ TIME EXIT: {trade.symbol} hold {hold_hours:.1f}h > {max_hold_hours}h com PnL {trade.pnl_percentage:.2f}% < {min_profit_pct}%")
+                        if hold_hours > max_hold_hours and max_pnl <= trade.pnl_percentage <= min_pnl:
+                            if not await self._time_exit_market_against(trade):
+                                await asyncio.sleep(1)
+                                continue
+                            logger.info(
+                                f"TIME EXIT: {trade.symbol} hold {hold_hours:.1f}h > {max_hold_hours}h "
+                                f"com PnL {trade.pnl_percentage:.2f}% entre {max_pnl}% e {min_pnl}%"
+                            )
                             
                             if not self.dry_run:
-                                await position_monitor._close_position(trade, trade.current_price, reason=f"Time Exit ({hold_hours:.1f}h)", db=db)
+                                await position_monitor._close_position(
+                                    trade,
+                                    trade.current_price,
+                                    reason=f"Time Exit ({hold_hours:.1f}h, PnL {trade.pnl_percentage:.2f}%)",
+                                    db=db
+                                )
                             else:
-                                logger.info(f"🎯 DRY RUN: Time Exit simulado para {trade.symbol}")
+                                logger.info(f"DRY RUN: Time Exit simulado para {trade.symbol}")
                         await asyncio.sleep(1)
                 finally:
                     db.close()
@@ -719,6 +736,35 @@ class AutonomousBot:
             except Exception as e:
                 logger.error(f"Erro no loop Time Exit: {e}")
                 await asyncio.sleep(300)
+
+    async def _time_exit_market_against(self, trade: Trade) -> bool:
+        settings = get_settings()
+        if not getattr(settings, "TIME_EXIT_REQUIRE_TREND_AGAINST", True):
+            return True
+        try:
+            from modules.market_filter import market_filter
+            sentiment = await market_filter.check_market_sentiment()
+            trend = str(sentiment.get("trend", "UNKNOWN")).upper()
+            volume_ratio = float(sentiment.get("volume_ratio", 1) or 1)
+        except Exception as e:
+            logger.debug(f"Time exit market check failed for {trade.symbol}: {e}")
+            return False
+
+        min_volume_ratio = float(getattr(settings, "TIME_EXIT_MIN_VOLUME_RATIO", 0.8))
+        if trade.direction == "LONG":
+            trend_against = trend in ("DOWNTREND", "STRONG_DOWNTREND")
+        else:
+            trend_against = trend in ("UPTREND", "STRONG_UPTREND")
+        volume_against = volume_ratio < min_volume_ratio
+
+        if not (trend_against or volume_against):
+            logger.info(
+                f"TIME EXIT bloqueado: {trade.symbol} mercado favoravel "
+                f"(trend {trend}, vol {volume_ratio:.2f}x)"
+            )
+            return False
+
+        return True
 
     def _calculate_rsi_quick(self, df, period=14):
         """Cálculo rápido de RSI para o loop de DCA"""

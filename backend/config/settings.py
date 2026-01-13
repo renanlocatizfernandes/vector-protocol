@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     SNIPER_TP_PCT: float = 1.2  # Alvos um pouco maiores
     SNIPER_SL_PCT: float = 0.8  # Stops mais largos para evitar ruído
     SNIPER_DEFAULT_LEVERAGE: int = 5  # 5x para sniper (era 20x)
+    SNIPER_IGNORE_WHITELIST: bool = True
 
     # Margin policy (Cross vs Isolated)
     DEFAULT_MARGIN_CROSSED: bool = True  # True = Cross como padrão
@@ -81,10 +82,11 @@ class Settings(BaseSettings):
     
     # Market Scanner (cobertura de universo)
     SCANNER_TOP_N: int = 800                     # Top-N por volume (quoteVolume) para priorização
-    SCANNER_MAX_SYMBOLS: int = 400               # Limite de símbolos processados por ciclo (performance)
-    SCANNER_STRICT_WHITELIST: bool = True        # Se True, restringe ao whitelist em qualquer ambiente
+    SCANNER_MAX_SYMBOLS: int = 80                # Limite de simbolos processados por ciclo (performance)
+    SCANNER_STRICT_WHITELIST: bool = False       # Se True, restringe ao whitelist em qualquer ambiente
     SCANNER_TESTNET_STRICT_WHITELIST: bool = False # Se True, restringe ao whitelist no TESTNET
-    MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Liquidez mínima 24h reduzida para 500k (Ultra Aggressive)
+    SCANNER_MIN_VOLUME_24H: float = 20_000_000.0   # Liquidez minima 24h para scanner
+    MIN_QUOTE_VOLUME_USDT_24H: float = 500_000.0   # Legacy - fallback
     SCANNER_CONCURRENCY: int = 8                 # Paralelismo sugerido para chamadas de klines/validações
     SYMBOL_WHITELIST: list[str] = [              # Whitelist principal (prod/testnet)
         # ❌ REMOVED: "HYPERUSDT", "TURBOUSDT", "BANANAUSDT" - Massive losses (77% loss rate, -8k USDT)
@@ -118,9 +120,11 @@ class Settings(BaseSettings):
     
     # Time-Based Exit (Melhoria #10)
     TIME_EXIT_ENABLED: bool = True
-    TIME_EXIT_HOURS: int = 6  # Fechar se aberta > 6h
-    TIME_EXIT_MIN_PNL_PCT: float = -2.0  # P&L mínimo para exit: -2%
-    TIME_EXIT_MAX_PNL_PCT: float = -5.0  # P&L máximo para exit: -5%
+    TIME_EXIT_HOURS: int = 4  # Fechar se aberta > 4h
+    TIME_EXIT_MIN_PNL_PCT: float = -0.8  # P&L minimo para exit: -0.8%
+    TIME_EXIT_MAX_PNL_PCT: float = -2.0  # P&L maximo para exit: -2.0%
+    TIME_EXIT_REQUIRE_TREND_AGAINST: bool = True
+    TIME_EXIT_MIN_VOLUME_RATIO: float = 0.8
     TIME_EXIT_MIN_PROFIT_PCT: float = 0.3  # Legacy
 
     # Take Profit Ladder (Melhoria #4)
@@ -166,7 +170,8 @@ class Settings(BaseSettings):
     DUMP_THRESHOLD_PCT: float = 30.0
     DUMP_TIMEFRAME_HOURS: int = 2
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    REQUIRED_SCORE_SIDEWAYS: int = 50  # Aumentado para qualidade
+    REQUIRED_SCORE_SIDEWAYS: int = 80  # Aumentado para qualidade
+    SIDEWAYS_MIN_VOLUME_RATIO: float = 0.8
 
     # ✅ PASSO 2: AJUSTAR HARD STOPS PARA CRYPTO-FRIENDLY
     # Crypto-friendly hard stops (volatilidade nativa do mercado)

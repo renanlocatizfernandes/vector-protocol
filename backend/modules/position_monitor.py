@@ -43,12 +43,12 @@ class PositionMonitor:
         self.symbol_blacklist = {}  # {symbol: until_timestamp}
         
         # 🔴 CORREÇÃO: Limites de perda mais conservadores
-        self.max_loss_per_trade = -8.0  # -8% max por trade (antes -10%)
+        self.max_loss_per_trade = -3.5  # -8% max por trade (antes -10%)
         self.emergency_stop_loss = -15.0  # -15% fecha imediatamente (antes -20%)
         
         # ✅ NOVO: Trailing stop com threshold realista
-        self.trailing_stop_activation = 3.0  # Ativar após +3% lucro (antes 1%)
-        self.trailing_stop_distance = 0.5  # 50% do lucro máximo
+        self.trailing_stop_activation = 2.0  # Ativar após +3% lucro (antes 1%)
+        self.trailing_stop_distance = 0.01  # 50% do lucro máximo
         
         # ✅ NOVO: Take profit parcial dinâmico
         self.partial_tp_threshold = 5.0  # +5% para parcial (antes 3%)
@@ -1342,6 +1342,8 @@ class PositionMonitor:
         if hold_hours > max_hours:
             # ✅ MELHORIA #10: Fechar se P&L entre -2% e -5% após >6h
             if max_pnl <= pnl_percentage <= min_pnl:
+                if not await self._time_exit_market_against(trade):
+                    return False
                 logger.info(
                     f"⌛ TIME EXIT: {trade.symbol} estagnado por {hold_hours:.1f}h\n"
                     f"  PnL {pnl_percentage:.2f}% entre {max_pnl}% e {min_pnl}%\n"
@@ -1358,6 +1360,34 @@ class PositionMonitor:
                 
         return False
     
+    async def _time_exit_market_against(self, trade: Trade) -> bool:
+        if not getattr(self.settings, "TIME_EXIT_REQUIRE_TREND_AGAINST", True):
+            return True
+        try:
+            from modules.market_filter import market_filter
+            sentiment = await market_filter.check_market_sentiment()
+            trend = str(sentiment.get("trend", "UNKNOWN")).upper()
+            volume_ratio = float(sentiment.get("volume_ratio", 1) or 1)
+        except Exception as e:
+            logger.debug(f"Time exit market check failed for {trade.symbol}: {e}")
+            return False
+
+        min_volume_ratio = float(getattr(self.settings, "TIME_EXIT_MIN_VOLUME_RATIO", 0.8))
+        if trade.direction == "LONG":
+            trend_against = trend in ("DOWNTREND", "STRONG_DOWNTREND")
+        else:
+            trend_against = trend in ("UPTREND", "STRONG_UPTREND")
+        volume_against = volume_ratio < min_volume_ratio
+
+        if not (trend_against or volume_against):
+            logger.info(
+                f"TIME EXIT bloqueado: {trade.symbol} mercado favoravel "
+                f"(trend {trend}, vol {volume_ratio:.2f}x)"
+            )
+            return False
+
+        return True
+
     async def _close_position(
         self,
         trade: Trade,

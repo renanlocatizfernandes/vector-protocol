@@ -83,7 +83,7 @@ class MarketScanner:
         ranked = sorted(volume_dict.keys(), key=lambda x: volume_dict[x], reverse=True)[:top_n]
 
         # Aplica limiar de liquidez mínima (ignorar em TESTNET para ampliar universo)
-        min_liq = float(getattr(s, "MIN_QUOTE_VOLUME_USDT_24H", 0.0))
+        min_liq = float(getattr(s, "SCANNER_MIN_VOLUME_24H", getattr(s, "MIN_QUOTE_VOLUME_USDT_24H", 0.0)))
         if not getattr(s, "BINANCE_TESTNET", True):
             if min_liq > 0.0:
                 ranked = [sym for sym in ranked if volume_dict.get(sym, 0.0) >= min_liq]
