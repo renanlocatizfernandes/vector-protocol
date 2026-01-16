@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Initial structure for Documentation and AI Governance.
 - `.ai/` directory with agent guidelines and context map.
 - `/specs` directory for feature specifications.
@@ -18,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/AI-CONTRIBUTION.md` and `docs/CHANGE-MAP.md`.
 - Updated `.agent/rules/` with bootstrap/governance rules.
 - `docs/GOVERNANCE.md`, `docs/RUNBOOK.md`, `docs/VERSIONING.md`.
+- **Signal Generator**: Implemented "Smart Reversal" logic (v5.1). Now allows LONG/SHORT trades against 4h trend if extreme conditions (RSI > 75/<25, Divergences) are met.
 
 ### Changed
+
 - Moved/Updated `CONTRIBUTING.md` to `docs/`.
 - Updated `README.md` to link to new documentation structure.

@@ -267,11 +267,21 @@ class SignalGenerator:
                 score += 15
                 logger.debug(f"{symbol}: 🎯 QUEDA EXTREMA detectada (RSI={rsi:.1f}, abaixo EMA200)")
             
-            # ✅ NOVO: Confirmar trend com 4h
+            # ✅ NOVO: Confirmar trend com 4h (Smart Reversal Logic)
             if self.require_trend_confirmation:
+                # Permitir Long contra tendência SE for extremo ou divergência
+                is_reversal = is_extreme_dip or (rsi_divergence in ['BULLISH', 'HIDDEN_BULLISH']) or rsi < 25
+                
                 if not await self._confirm_trend_long(df_4h):
-                    return None
-                score += 10
+                    if is_reversal:
+                        logger.info(f"{symbol}: ⚠️ Long contra tendência permitido (Smart Reversal) - RSI={rsi:.1f}, Div={rsi_divergence}")
+                        # Penalidade de risco por operar contra tendência
+                        score -= 5
+                    else:
+                        logger.debug(f"{symbol}: Rejeitado por estar em downtrend no 4h (sem sinal extremo)")
+                        return None
+                else:
+                    score += 10
             
             # ✅ NOVO: Verificar momentum
             momentum_ok, momentum_score = self._check_momentum(df_1h, 'LONG')
@@ -347,11 +357,21 @@ class SignalGenerator:
                 score += 15
                 logger.debug(f"{symbol}: 🎯 ALTA EXTREMA detectada (RSI={rsi:.1f}, acima EMA200)")
             
-            # ✅ NOVO: Confirmar trend com 4h
+            # ✅ NOVO: Confirmar trend com 4h (Smart Reversal Logic)
             if self.require_trend_confirmation:
+                # Permitir Short contra tendência SE for extremo ou divergência
+                is_reversal = is_extreme_pump or (rsi_divergence in ['BEARISH', 'HIDDEN_BEARISH']) or rsi > 75
+                
                 if not await self._confirm_trend_short(df_4h):
-                    return None
-                score += 10
+                    if is_reversal:
+                        logger.info(f"{symbol}: ⚠️ Short contra tendência permitido (Smart Reversal) - RSI={rsi:.1f}, Div={rsi_divergence}")
+                        # Penalidade de risco por operar contra tendência
+                        score -= 5 
+                    else:
+                        logger.debug(f"{symbol}: Rejeitado por estar em uptrend no 4h (sem sinal extremo)")
+                        return None
+                else:
+                    score += 10
             
             # ✅ NOVO: Verificar momentum
             momentum_ok, momentum_score = self._check_momentum(df_1h, 'SHORT')
