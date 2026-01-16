@@ -300,6 +300,7 @@ class BinanceClientManager:
             'last_validation_time': None
         }
         settings = get_settings()
+        self.settings = settings
         self.api_key = settings.BINANCE_API_KEY
         self.api_secret = settings.BINANCE_API_SECRET
         self.testnet = settings.BINANCE_TESTNET
@@ -1419,7 +1420,8 @@ class BinanceClientManager:
         self,
         symbol: Optional[str] = None,
         income_type: Optional[str] = None,
-        limit: int = 1000
+        limit: int = 1000,
+        start_time: Optional[int] = None
     ) -> List[Dict]:
         """
         Retorna histórico de income (fees, funding, realized PnL).
@@ -1450,6 +1452,8 @@ class BinanceClientManager:
                     params["symbol"] = symbol
                 if income_type:
                     params["incomeType"] = income_type
+                if start_time:
+                    params["startTime"] = int(start_time)
 
                 income = await self._retry_call(self.client.futures_income_history, **params)
                 logger.debug(
@@ -1467,6 +1471,128 @@ class BinanceClientManager:
 
         # Cache for 5 minutes
         return await self._cached_call(cache_key, ttl=300, fetch_fn=_fetch)
+
+    async def _create_algo_order(self, params: Dict) -> Dict:
+        """
+        Cria ordem via endpoint de Algo Order (USD-M Futures).
+        """
+        if not self.client:
+            raise BinanceAPIException(None, 0, "Client not initialized (network/region error)")
+        if hasattr(self.client, "_request_futures_api"):
+            return await self._retry_call(
+                self.client._request_futures_api,
+                "post",
+                "algo/order",
+                data=params
+            )
+        raise AttributeError("Algo order endpoint unavailable")
+
+    async def place_stop_loss_order(
+        self,
+        symbol: str,
+        side: str,
+        stop_price: float,
+        quantity: float,
+        position_side: Optional[str] = None,
+        working_type: str = "MARK_PRICE"
+    ) -> Dict:
+        """
+        Cria Stop Loss preferencialmente via Algo Order API.
+        Retorna {success, order, algo, reason}.
+        """
+        params = {
+            "symbol": symbol,
+            "side": side,
+            "type": "STOP_MARKET",
+            "stopPrice": stop_price,
+            "quantity": quantity,
+            "workingType": working_type
+        }
+        if position_side and position_side != "BOTH":
+            params["positionSide"] = position_side
+
+        use_algo = bool(getattr(self.settings, "USE_ALGO_STOP_ORDERS", True))
+        fallback = bool(getattr(self.settings, "ALGO_STOP_FALLBACK_TO_STANDARD", True))
+
+        if use_algo:
+            try:
+                order = await self._create_algo_order(params)
+                return {"success": True, "order": order, "algo": True}
+            except BinanceAPIException as e:
+                logger.warning(f"Algo SL failed ({symbol}): {e.message}")
+                if not fallback:
+                    return {"success": False, "reason": e.message}
+            except Exception as e:
+                logger.warning(f"Algo SL failed ({symbol}): {e}")
+                if not fallback:
+                    return {"success": False, "reason": str(e)}
+
+        try:
+            order = await self._retry_call(self.client.futures_create_order, **params)
+            return {"success": True, "order": order, "algo": False}
+        except Exception as e:
+            logger.error(f"Stop loss fallback failed ({symbol}): {e}")
+            return {"success": False, "reason": str(e)}
+
+    async def get_top_long_short_account_ratio(
+        self,
+        symbol: str,
+        period: str = "5m",
+        limit: int = 1
+    ) -> List[Dict]:
+        try:
+            if hasattr(self.client, "futures_top_long_short_account_ratio"):
+                return await self._retry_call(
+                    self.client.futures_top_long_short_account_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            if hasattr(self.client, "_request_futures_data_api"):
+                return await self._retry_call(
+                    self.client._request_futures_data_api,
+                    "get",
+                    "topLongShortAccountRatio",
+                    data={"symbol": symbol, "period": period, "limit": limit},
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            raise AttributeError("topLongShortAccountRatio unavailable")
+        except Exception as e:
+            logger.warning(f"get_top_long_short_account_ratio({symbol}) failed: {e}")
+            return []
+
+    async def get_top_long_short_position_ratio(
+        self,
+        symbol: str,
+        period: str = "5m",
+        limit: int = 1
+    ) -> List[Dict]:
+        try:
+            if hasattr(self.client, "futures_top_long_short_position_ratio"):
+                return await self._retry_call(
+                    self.client.futures_top_long_short_position_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            if hasattr(self.client, "_request_futures_data_api"):
+                return await self._retry_call(
+                    self.client._request_futures_data_api,
+                    "get",
+                    "topLongShortPositionRatio",
+                    data={"symbol": symbol, "period": period, "limit": limit},
+                    attempts=2,
+                    base_sleep=0.5,
+                )
+            raise AttributeError("topLongShortPositionRatio unavailable")
+        except Exception as e:
+            logger.warning(f"get_top_long_short_position_ratio({symbol}) failed: {e}")
+            return []
 
 # Instância global
 binance_client = BinanceClientManager()

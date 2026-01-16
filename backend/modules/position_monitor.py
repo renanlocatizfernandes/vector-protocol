@@ -23,6 +23,7 @@ from api.models.trades import Trade
 from utils.telegram_notifier import telegram_notifier
 from utils.helpers import round_step_size
 from config.settings import get_settings
+from utils.redis_client import redis_client
 from modules.risk_calculator import risk_calculator
 
 logger = setup_logger("position_monitor")
@@ -1265,24 +1266,18 @@ class PositionMonitor:
                     
                     # Verificar preferência de preço de gatilho
                     working_type = 'MARK_PRICE' if getattr(self.settings, "USE_MARK_PRICE_FOR_STOPS", True) else 'CONTRACT_PRICE'
-
-                    sl_params = {
-                        "symbol": trade.symbol,
-                        "side": sl_side,
-                        "type": "STOP_MARKET",
-                        "stopPrice": sl_price,
-                        "quantity": total_qty,
-                        "workingType": working_type
-                    }
-                    # Em One-Way mode, reduceOnly pode causar erro -1106
-                    # STOP_MARKET já fecha posição implicitamente
-                    if position_side and position_side != "BOTH":
-                        sl_params["positionSide"] = position_side
-                    await asyncio.to_thread(
-                        self.client.futures_create_order,
-                        **sl_params
+                    result = await binance_client.place_stop_loss_order(
+                        symbol=trade.symbol,
+                        side=sl_side,
+                        stop_price=sl_price,
+                        quantity=total_qty,
+                        position_side=position_side,
+                        working_type=working_type
                     )
-                    logger.info(f"🛡️ Stop Loss atualizado na Binance: {total_qty:.4f} @ {sl_price:.4f}")
+                    if result.get("success"):
+                        logger.info(f"Stop Loss atualizado na Binance: {total_qty:.4f} @ {sl_price:.4f} (algo={result.get('algo')})")
+                    else:
+                        logger.warning(f"Stop Loss nao atualizado: {result.get('reason', 'unknown error')}")
                     
                 except Exception as e:
                     logger.error(f"❌ Falha ao atualizar SL na Binance pós-DCA: {e}")
@@ -1503,6 +1498,22 @@ class PositionMonitor:
 
             # ✅ NOVO v4.0: Finalizar tracking de métricas da posição
             self._finalize_position_tracking(trade.symbol, trade.entry_price, current_price, trade.direction)
+
+            # ✅ SMART REVERSAL: Decrementar contador no Redis se for reversal
+            try:
+                if redis_client and redis_client.client:
+                    metadata_key = f"positions:metadata:{trade.symbol}"
+                    position_type = redis_client.client.get(metadata_key)
+                    
+                    if position_type == "REVERSAL":
+                        redis_client.client.decr("risk:counters:reversal")
+                        redis_client.client.delete(metadata_key)
+                        logger.info(f"🔢 Redis Counter: Reversal position decremented/cleared for {trade.symbol}")
+                    elif position_type:
+                        # Clean up other metadata if exists
+                        redis_client.client.delete(metadata_key)
+            except Exception as e:
+                logger.error(f"Failed to decrement reversal counter: {e}")
 
             # ✅ PROFIT OPTIMIZATION - Calculate Final Net P&L (with all fees and funding)
             if getattr(self.settings, "TRACK_FEES_PER_TRADE", True):

@@ -61,16 +61,16 @@ class MarketIntelligence:
                 return self.cache[cache_key]["data"]
 
             # Fetch current ratios
-            account_ratio_resp = await asyncio.to_thread(
-                binance_client.client.futures_top_long_short_account_ratio,
+            account_ratio_resp = await binance_client.get_top_long_short_account_ratio(
                 symbol=symbol,
-                period="5m"  # Last 5 minutes
+                period="5m",
+                limit=1
             )
 
-            position_ratio_resp = await asyncio.to_thread(
-                binance_client.client.futures_top_long_short_position_ratio,
+            position_ratio_resp = await binance_client.get_top_long_short_position_ratio(
                 symbol=symbol,
-                period="5m"
+                period="5m",
+                limit=1
             )
 
             if not account_ratio_resp or not position_ratio_resp:
@@ -83,8 +83,8 @@ class MarketIntelligence:
                 }
 
             # Extract latest values
-            account_ratio = float(account_ratio_resp[0]['longShortRatio'])
-            position_ratio = float(position_ratio_resp[0]['longShortRatio'])
+            account_ratio = float((account_ratio_resp[-1] or {}).get('longShortRatio', 1) or 1)
+            position_ratio = float((position_ratio_resp[-1] or {}).get('longShortRatio', 1) or 1)
 
             # Calculate sentiment
             sentiment = self._calculate_sentiment(account_ratio)
@@ -190,6 +190,15 @@ class MarketIntelligence:
 
             # Get current price
             current_price = await binance_client.get_symbol_price(symbol)
+
+            if current_price is None:
+                return {
+                    'bullish_zones': [],
+                    'bearish_zones': [],
+                    'current_proximity': {'nearest_bull_zone': None, 'distance_pct': None},
+                    'recommendation': 'NEUTRAL',
+                    'error': 'current_price_unavailable'
+                }
 
             # Calculate proximity
             proximity = self._calculate_zone_proximity(current_price, bullish_zones, bearish_zones)
@@ -397,6 +406,15 @@ class MarketIntelligence:
                 limit=2
             )
 
+            if not klines or len(klines) < 2:
+                return {
+                    'oi_change_1h': 0,
+                    'price_change_1h': 0,
+                    'signal': 'NEUTRAL',
+                    'strength': 50,
+                    'score_adjustment': 0
+                }
+
             price_1h_ago = float(klines[0][4])  # Close price
             price_now = float(klines[-1][4])
             price_change_pct = ((price_now - price_1h_ago) / price_1h_ago * 100) if price_1h_ago > 0 else 0
@@ -463,6 +481,16 @@ class MarketIntelligence:
             )
 
             if not orderbook or 'bids' not in orderbook or 'asks' not in orderbook:
+                return {
+                    'bid_liquidity_5pct': 0,
+                    'ask_liquidity_5pct': 0,
+                    'imbalance_ratio': 1.0,
+                    'liquidity_score': 0,
+                    'execution_risk': 'CRITICAL',
+                    'recommendation': 'NO_DATA'
+                }
+
+            if not orderbook.get('bids') or not orderbook.get('asks'):
                 return {
                     'bid_liquidity_5pct': 0,
                     'ask_liquidity_5pct': 0,
@@ -569,9 +597,15 @@ class MarketIntelligence:
             sentiment_score = sum(components.values())
 
             # Calculate overall strength
+            distance_pct = liq_zones.get('current_proximity', {}).get('distance_pct')
+            if distance_pct is None:
+                distance_score = 50
+            else:
+                distance_score = max(0, 100 - abs(distance_pct * 100))
+
             strengths = [
                 top_trader.get('strength', 50),
-                max(0, 100 - abs(liq_zones.get('current_proximity', {}).get('distance_pct', 50) * 100)),
+                distance_score,
                 orderbook.get('liquidity_score', 5) * 10
             ]
             overall_strength = int(np.mean(strengths))

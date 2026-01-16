@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     MAX_PORTFOLIO_RISK: float = 0.15  # 15% máximo em risco
     MAX_TOTAL_CAPITAL_USAGE: float = 0.90  # Fraction of total capital available
     DCA_RESERVE_PCT: float = 0.20  # Reservar 20% do capital para DCA
+    REVERSAL_EXTRA_SLOTS_PCT: float = 0.5  # 50% de posições extras para reversão (Smart Reversal)
     MAX_MARGIN_USD_PER_POSITION: float = 5.0  # 🎯 Máximo de $5 de margem por posição
     DEFAULT_LEVERAGE: int = 10  # 10x padrão (reduz margem requerida 50%)
     # Risco e spread (afinamento fino)
@@ -47,6 +48,15 @@ class Settings(BaseSettings):
     SNIPER_TP_PCT: float = 1.2  # Alvos um pouco maiores
     SNIPER_SL_PCT: float = 0.8  # Stops mais largos para evitar ruído
     SNIPER_DEFAULT_LEVERAGE: int = 5  # 5x para sniper (era 20x)
+    SNIPER_LEVERAGE_MIN: int = 3
+    SNIPER_LEVERAGE_MAX: int = 15
+    SNIPER_SL_MIN_PCT: float = 0.4
+    SNIPER_SL_MAX_PCT: float = 1.2
+    SNIPER_TP_MIN_PCT: float = 0.8
+    SNIPER_TP_MAX_PCT: float = 2.5
+    SNIPER_SL_ATR_MULT: float = 1.0
+    SNIPER_TP_ATR_MULT: float = 2.0
+    SNIPER_MIN_RR: float = 1.5
     SNIPER_IGNORE_WHITELIST: bool = True
 
     # Margin policy (Cross vs Isolated)
@@ -61,6 +71,8 @@ class Settings(BaseSettings):
     TSL_ATR_LOOKBACK_INTERVAL: str = "15m"       # janela para ATR (para calibrar callback)
     ENABLE_BRACKET_BATCH: bool = False           # Tentar enviar SL+TP em batch (fallback para sequencial)
     USE_MARK_PRICE_FOR_STOPS: bool = True        # Usar MARK_PRICE para SL/TP/TSL (mais estável)
+    USE_ALGO_STOP_ORDERS: bool = True            # Usar Algo Order API para Stop Loss
+    ALGO_STOP_FALLBACK_TO_STANDARD: bool = True  # Fallback para endpoint padrao se algo falhar
     ORDER_TIMEOUT_SEC: int = 3                   # Timeout padrão (s) para LIMIT antes de fallback MARKET
     USE_POST_ONLY_ENTRIES: bool = False          # Entradas LIMIT como maker-only (GTX). Se True, reduz taker fees.
     TAKE_PROFIT_PARTS: str = "0.5,0.3,0.2"       # Frações para TP ladder (ex.: 50%/30%/20%)
@@ -273,6 +285,10 @@ class Settings(BaseSettings):
     TELEGRAM_CHAT_ID: str = ""
     TELEGRAM_ENABLED: bool = False
 
+    # PnL Divergence Guard
+    PNL_DIVERGENCE_BLOCK_ENABLED: bool = True
+    PNL_DIVERGENCE_THRESHOLD_PCT: float = 5.0
+
     # ========================================
     # PROFIT OPTIMIZATION - Advanced Market Intelligence
     # ========================================
@@ -305,6 +321,8 @@ class Settings(BaseSettings):
     ENABLE_ORDER_BOOK_FILTER: bool = True
     MIN_LIQUIDITY_DEPTH_USDT: float = 100000.0  # $100k within 5%
     ORDER_BOOK_DEPTH_LEVELS: int = 100
+    ORDER_BOOK_BLOCK_INVALID: bool = True
+    ORDER_BOOK_BLOCK_LOW_LIQUIDITY: bool = True
 
     # Mark-Last Deviation
     MARK_LAST_WARNING_PCT: float = 0.5

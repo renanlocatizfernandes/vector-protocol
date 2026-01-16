@@ -268,6 +268,7 @@ class SignalGenerator:
                 logger.debug(f"{symbol}: 🎯 QUEDA EXTREMA detectada (RSI={rsi:.1f}, abaixo EMA200)")
             
             # ✅ NOVO: Confirmar trend com 4h (Smart Reversal Logic)
+            is_reversal_signal = False
             if self.require_trend_confirmation:
                 # Permitir Long contra tendência SE for extremo ou divergência
                 is_reversal = is_extreme_dip or (rsi_divergence in ['BULLISH', 'HIDDEN_BULLISH']) or rsi < 25
@@ -277,6 +278,7 @@ class SignalGenerator:
                         logger.info(f"{symbol}: ⚠️ Long contra tendência permitido (Smart Reversal) - RSI={rsi:.1f}, Div={rsi_divergence}")
                         # Penalidade de risco por operar contra tendência
                         score -= 5
+                        is_reversal_signal = True
                     else:
                         logger.debug(f"{symbol}: Rejeitado por estar em downtrend no 4h (sem sinal extremo)")
                         return None
@@ -358,6 +360,7 @@ class SignalGenerator:
                 logger.debug(f"{symbol}: 🎯 ALTA EXTREMA detectada (RSI={rsi:.1f}, acima EMA200)")
             
             # ✅ NOVO: Confirmar trend com 4h (Smart Reversal Logic)
+            is_reversal_signal = False
             if self.require_trend_confirmation:
                 # Permitir Short contra tendência SE for extremo ou divergência
                 is_reversal = is_extreme_pump or (rsi_divergence in ['BEARISH', 'HIDDEN_BEARISH']) or rsi > 75
@@ -367,6 +370,7 @@ class SignalGenerator:
                         logger.info(f"{symbol}: ⚠️ Short contra tendência permitido (Smart Reversal) - RSI={rsi:.1f}, Div={rsi_divergence}")
                         # Penalidade de risco por operar contra tendência
                         score -= 5 
+                        is_reversal_signal = True
                     else:
                         logger.debug(f"{symbol}: Rejeitado por estar em uptrend no 4h (sem sinal extremo)")
                         return None
@@ -613,6 +617,7 @@ class SignalGenerator:
             'market_sentiment_score': market_sentiment_score,
             'top_trader_ratio': top_trader_ratio,
             'liquidation_proximity': liquidation_proximity,
+            'is_reversal': is_reversal_signal if 'is_reversal_signal' in locals() else False,
             'timestamp': datetime.now()
         }
         

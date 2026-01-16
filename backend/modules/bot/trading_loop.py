@@ -15,6 +15,8 @@ from modules.correlation_filter import correlation_filter
 from modules.metrics_collector import metrics_collector
 from modules.supervisor import supervisor  # ✅ NOVO
 from modules.metrics_dashboard import metrics_dashboard  # ✅ PASSO 4: Metrics Dashboard
+from modules.pnl_reconciler import check_pnl_divergence
+from config.settings import get_settings
 
 logger = setup_logger("trading_loop")
 
@@ -85,6 +87,17 @@ class TradingLoop:
                     logger.warning("⚠️ Circuit breaker ativo. Aguardando reset...")
                     await asyncio.sleep(60)
                     continue
+                settings = get_settings()
+                if getattr(settings, "PNL_DIVERGENCE_BLOCK_ENABLED", True):
+                    divergence = await check_pnl_divergence()
+                    if divergence.get("warning"):
+                        logger.warning(
+                            "PnL divergence detected. Pausing executions until reconciliation. "
+                            f"delta={divergence.get('realized_delta')} "
+                            f"pct={divergence.get('pct_delta')}%"
+                        )
+                        await asyncio.sleep(self.bot_config.scan_interval)
+                        continue
 
                 market_sentiment = await market_filter.check_market_sentiment()
                 logger.info(

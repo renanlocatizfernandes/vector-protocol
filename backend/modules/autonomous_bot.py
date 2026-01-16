@@ -19,6 +19,9 @@ from utils.helpers import round_step_size
 from config.settings import get_settings
 from modules.position_monitor import position_monitor
 from modules.telegram_bot import telegram_bot
+from modules.risk_calculator import risk_calculator
+from modules.signal_generator import signal_generator
+from modules.market_intelligence import market_intelligence
 from modules.bot.bot_config import BotConfig
 from modules.bot.position_manager import PositionManager
 from modules.bot.trading_loop import TradingLoop
@@ -767,75 +770,187 @@ class AutonomousBot:
         return True
 
     def _calculate_rsi_quick(self, df, period=14):
-        """Cálculo rápido de RSI para o loop de DCA"""
+        """Calculo rapido de RSI para o loop de DCA"""
         delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
         rs = gain / loss
         return 100 - (100 / (1 + rs)).iloc[-1]
 
+    def _clamp(self, value: float, min_val: float, max_val: float) -> float:
+        return max(min_val, min(value, max_val))
+    async def _compute_sniper_params(self, symbol: str, price: float) -> Dict:
+        settings = get_settings()
+        params = {
+            "sl_pct": float(getattr(settings, "SNIPER_SL_PCT", 0.8)) / 100.0,
+            "tp_pct": float(getattr(settings, "SNIPER_TP_PCT", 1.2)) / 100.0,
+            "leverage": int(getattr(settings, "SNIPER_DEFAULT_LEVERAGE", 5)),
+            "risk_reward": 1.5,
+            "volume_ratio": 1.0,
+            "rsi": 50.0
+        }
+
+        try:
+            klines = await binance_client.get_klines(symbol=symbol, interval="1h", limit=50)
+            if not klines:
+                return params
+
+            closes = [float(k[4]) for k in klines]
+            volumes = [float(k[5]) for k in klines]
+            if not closes or not volumes:
+                return params
+
+            df = pd.DataFrame({"close": closes})
+            rsi = float(self._calculate_rsi_quick(df))
+            vol_window = min(20, len(volumes))
+            vol_ma = sum(volumes[-vol_window:]) / max(1, vol_window)
+            volume_ratio = (volumes[-1] / vol_ma) if vol_ma > 0 else 1.0
+
+            atr = risk_calculator.calculate_atr(klines)
+            atr_pct = (atr / price * 100.0) if price else 0.0
+
+            sl_min = float(getattr(settings, "SNIPER_SL_MIN_PCT", 0.4))
+            sl_max = float(getattr(settings, "SNIPER_SL_MAX_PCT", 1.2))
+            tp_min = float(getattr(settings, "SNIPER_TP_MIN_PCT", 0.8))
+            tp_max = float(getattr(settings, "SNIPER_TP_MAX_PCT", 2.5))
+            sl_mult = float(getattr(settings, "SNIPER_SL_ATR_MULT", 1.0))
+            tp_mult = float(getattr(settings, "SNIPER_TP_ATR_MULT", 2.0))
+
+            sl_pct = self._clamp(atr_pct * sl_mult, sl_min, sl_max) / 100.0
+            tp_pct = self._clamp(atr_pct * tp_mult, tp_min, tp_max) / 100.0
+            risk_reward = (tp_pct / sl_pct) if sl_pct > 0 else 1.5
+
+            leverage = signal_generator._calculate_leverage(volume_ratio, rsi, risk_reward)
+            lev_min = int(getattr(settings, "SNIPER_LEVERAGE_MIN", 3))
+            lev_max = int(getattr(settings, "SNIPER_LEVERAGE_MAX", 15))
+            leverage = int(self._clamp(leverage, lev_min, lev_max))
+
+            params.update(
+                sl_pct=sl_pct,
+                tp_pct=tp_pct,
+                leverage=leverage,
+                risk_reward=risk_reward,
+                volume_ratio=volume_ratio,
+                rsi=rsi
+            )
+        except Exception as e:
+            logger.warning(f"Sniper params fallback ({symbol}): {e}")
+
+        try:
+            mi = await market_intelligence.get_market_sentiment_score(symbol)
+            sentiment_score = float(mi.get("sentiment_score", 0) or 0)
+            if sentiment_score >= 20:
+                params["tp_pct"] *= 1.15
+                params["leverage"] = int(self._clamp(params["leverage"] + 1, 2, 20))
+            elif sentiment_score <= -10:
+                params["tp_pct"] *= 0.85
+                params["leverage"] = int(self._clamp(params["leverage"] - 1, 2, 20))
+        except Exception as e:
+            logger.debug(f"Sniper sentiment adjust skipped ({symbol}): {e}")
+
+        min_rr = float(getattr(settings, "SNIPER_MIN_RR", 1.5))
+        params["risk_reward"] = max(params.get("risk_reward", 1.5), 0.1)
+        params["skip"] = params["risk_reward"] < min_rr
+        if params["skip"]:
+            params["skip_reason"] = f"risk_reward {params['risk_reward']:.2f} < {min_rr:.2f}"
+
+        return params
+
     async def _open_sniper_batch(self, count: int, open_positions_exch: List[Dict]):
-        """Abre até `count` posições sniper usando lógica interna."""
+        """Abre ate `count` posicoes sniper usando logica interna."""
         settings = get_settings()
         target = max(1, int(count))
         account_balance = await self._get_account_balance()
-        
-        # ✅ CORREÇÃO: Sniper SEM restrição de whitelist - usa market_scanner para obter candidatos
+
+        # Sniper sem restricao de whitelist
         try:
             candidate_symbols = await market_scanner.get_sniper_candidates()
-            if not candidate_symbols: 
-                logger.warning("⚠️ Nenhum candidato Sniper encontrado no scanner. Buscando símbolos ativos...")
-                # Fallback: buscar top 20 símbolos mais negociados da Binance
+            if not candidate_symbols:
+                logger.warning("Nenhum candidato Sniper encontrado no scanner. Buscando simbolos ativos...")
                 ticker_24h = await binance_client.client.futures_ticker()
                 if ticker_24h:
-                    # Filtrar apenas USDT e ordenar por volume
                     candidate_symbols = [
                         t['symbol'] for t in sorted(ticker_24h, key=lambda x: float(x.get('quoteVolume', 0)), reverse=True)
-                        if t['symbol'].endswith('USDT') and float(t.get('quoteVolume', 0)) > 1000000  # Mínimo $1M volume 24h
-                    ][:30]  # Top 30
+                        if t['symbol'].endswith('USDT') and float(t.get('quoteVolume', 0)) > 1000000
+                    ][:30]
                 else:
                     candidate_symbols = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT"]
-                logger.info(f"📊 Sniper usando {len(candidate_symbols)} símbolos ativos do mercado")
+                logger.info(f"Sniper usando {len(candidate_symbols)} simbolos ativos do mercado")
         except Exception as e:
-            logger.warning(f"⚠️ Erro ao buscar candidatos Sniper: {e}. Usando lista padrão.")
+            logger.warning(f"Erro ao buscar candidatos Sniper: {e}. Usando lista padrao.")
             candidate_symbols = ["BTCUSDT","ETHUSDT","BNBUSDT","SOLUSDT","XRPUSDT","ADAUSDT","DOGEUSDT","AVAXUSDT","LINKUSDT","MATICUSDT"]
 
         opened = 0
         for sym in candidate_symbols:
-            if opened >= target: break
-            
+            if opened >= target:
+                break
+
             try:
-                tp_pct = float(getattr(settings, "SNIPER_TP_PCT", 0.6)) / 100.0
-                sl_pct = float(getattr(settings, "SNIPER_SL_PCT", 0.3)) / 100.0
-                lev_default = int(getattr(settings, "SNIPER_DEFAULT_LEVERAGE", 10))
                 price = await binance_client.get_symbol_price(sym)
                 if not price:
-                    logger.warning(f"⚠️ Preço não disponível para {sym}, pulando.")
+                    logger.warning(f"Preco nao disponivel para {sym}, pulando.")
                     continue
-                
+
+                if getattr(settings, "ENABLE_ORDER_BOOK_FILTER", True):
+                    depth = await market_intelligence.get_order_book_depth(sym)
+                    if not depth and getattr(settings, "ORDER_BOOK_BLOCK_INVALID", True):
+                        logger.warning(f"Sniper bloqueado {sym}: order book indisponivel")
+                        continue
+                    if depth:
+                        min_side_liq = min(depth.get('bid_liquidity_5pct', 0), depth.get('ask_liquidity_5pct', 0))
+                        min_liq = float(getattr(settings, "MIN_LIQUIDITY_DEPTH_USDT", 100000.0))
+                        if min_side_liq < min_liq and getattr(settings, "ORDER_BOOK_BLOCK_LOW_LIQUIDITY", True):
+                            logger.warning(f"Sniper bloqueado {sym}: baixa liquidez")
+                            continue
+
+                params = await self._compute_sniper_params(sym, price)
+                if params.get("skip"):
+                    logger.info(f"Sniper pulado {sym}: {params.get('skip_reason')}")
+                    continue
+
                 direction = "LONG"
+                sl_pct = float(params.get("sl_pct", 0.008))
+                tp_pct = float(params.get("tp_pct", 0.012))
+                leverage = int(params.get("leverage", getattr(settings, "SNIPER_DEFAULT_LEVERAGE", 5)))
 
                 stop = price * (1.0 - sl_pct) if direction == "LONG" else price * (1.0 + sl_pct)
                 tp = price * (1.0 + tp_pct) if direction == "LONG" else price * (1.0 - tp_pct)
 
-                signal = {"symbol": sym, "direction": direction, "entry_price": price, "stop_loss": float(stop), "take_profit_1": float(tp), "leverage": lev_default, "score": 99, "sniper": True, "risk_pct": 1.0, "force": True}
+                signal = {
+                    "symbol": sym,
+                    "direction": direction,
+                    "entry_price": price,
+                    "stop_loss": float(stop),
+                    "take_profit_1": float(tp),
+                    "leverage": leverage,
+                    "score": 99,
+                    "sniper": True,
+                    "risk_pct": 1.0,
+                    "force": True
+                }
+                signal = self._adjust_signal_for_symbol_profile(signal)
 
-                exec_res = await order_executor.execute_signal(signal=signal, account_balance=account_balance, open_positions=len(open_positions_exch) + opened, dry_run=self.dry_run)
+                exec_res = await order_executor.execute_signal(
+                    signal=signal,
+                    account_balance=account_balance,
+                    open_positions=len(open_positions_exch) + opened,
+                    dry_run=self.dry_run
+                )
                 if bool(exec_res.get("success")):
-                    opened +=1
-                    logger.info(f"✅ Sniper aberto: {sym} {direction} @ {exec_res.get('entry_price') or exec_res.get('avg_price')}")
+                    opened += 1
+                    logger.info(f"Sniper aberto: {sym} {direction} @ {exec_res.get('entry_price') or exec_res.get('avg_price')}")
                 else:
-                    logger.warning(f"❌ Sniper rejeitado {sym}: {exec_res.get('reason')}")
+                    logger.warning(f"Sniper rejeitado {sym}: {exec_res.get('reason')}")
                 await asyncio.sleep(0.5)
             except Exception as e:
                 logger.error(f"Erro ao executar sniper {sym}: {e}")
-        
+
         if opened > 0:
-            await telegram_notifier.send_message(f"🎯 Sniper loop concluído\nAlvo: {target} | Abertas: {opened}")
-        logger.info(f"🎯 Sniper batch: alvo={target} | executadas={opened}")
+            await telegram_notifier.send_message(f"Sniper loop concluido\nAlvo: {target} | Abertas: {opened}")
+        logger.info(f"Sniper batch: alvo={target} | executadas={opened}")
 
     def _get_symbol_profile(self, symbol: str) -> Dict:
-        """Perfil histórico por símbolo (P&L, win rate, etc.)"""
+        """Perfil historico por simbolo (P&L, win rate, etc.)"""
         db = SessionLocal()
         try:
             trades = db.query(Trade).filter(Trade.symbol == symbol, Trade.status == 'closed').order_by(Trade.closed_at.desc()).limit(50).all()

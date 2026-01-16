@@ -31,9 +31,13 @@ class RiskManager:
         self.max_total_risk = float(self.settings.MAX_PORTFOLIO_RISK)
         self.max_positions_allowed = int(self.settings.MAX_POSITIONS)
 
-        # ✅ NOVO: Tracking de performance
+        # ✅ NOVO: Tracking de performance e Reversal Slots
         self.consecutive_wins = 0
         self.consecutive_losses = 0
+        
+        # Smart Reversal Slots (Bucket separado)
+        self.reversal_extra_pct = float(getattr(self.settings, "REVERSAL_EXTRA_SLOTS_PCT", 0.5))
+
 
         # Hard stops (via settings)
         self.daily_max_loss_pct = float(getattr(self.settings, "DAILY_MAX_LOSS_PCT", 0.0))
@@ -82,21 +86,76 @@ class RiskManager:
         # ✅ NOVO v4.0: Tracking de métricas
         self._metrics["total_trades_validated"] += 1
 
-        # 0. Respeitar limite global de posições
-        #    Para trades normais: limite = MAX_POSITIONS
-        #    Para trades sniper:  limite = MAX_POSITIONS + SNIPER_EXTRA_SLOTS
+        # 0. Respeitar limite global de posições com Smart Reversal Buckets
+        #    - Bucket Trend: MAX_POSITIONS
+        #    - Bucket Reversal: MAX_POSITIONS * REVERSAL_EXTRA_SLOTS_PCT
+        #    Eles são INDEPENDENTES (reversa têm seus próprios slots extras)
+        
         extra_slots = 0
         try:
             extra_slots = int(getattr(self.settings, "SNIPER_EXTRA_SLOTS", 0))
         except Exception:
             extra_slots = 0
+            
+        is_reversal = bool(signal.get('is_reversal', False))
+        is_sniper = bool(signal.get("sniper"))
+        
+        # Determinar qual balde e limite usar
+        limit_trend = self.max_positions_allowed
+        limit_reversal = int(self.max_positions_allowed * self.reversal_extra_pct)
+        if limit_reversal < 1: limit_reversal = 1
+        
+        # Contagem atual de posições (precisamos saber quantas são reversal)
+        # Como não temos DB aqui, vamos estimar usando Redis ou apenas assumir
+        # para V1 que Reversal Positions são "adicionais" acima do MAX_POSITIONS
+        # Mas o usuário pediu "garantir adicional".
+        
+        # LÓGICA V5.1 SMART REVERSAL BUCKETS:
+        # Se is_reversal:
+        #    Check se open_reversal < limit_reversal.
+        #    (Como contar open_reversal? Usaremos uma key no Redis 'risk:counters:reversal')
+        # Se not is_reversal (Trend):
+        #    Check se open_trend < limit_trend.
+        
+        redis_count_key = "risk:counters:reversal"
+        current_reversals = 0
+        if redis_client and redis_client.client:
+            try:
+                # Limpar contadores expirados? Não, vamos assumir que o OrderExecutor decrementa.
+                # Ou melhor: vamos contar 'na hora' se tivéssemos a lista completa.
+                # Como open_positions é só um int, vamos confiar no Redis counter.
+                val = redis_client.client.get(redis_count_key)
+                if val:
+                    current_reversals = int(val)
+            except Exception:
+                current_reversals = 0
+        
+        # Estimar Trend positions: Total - Reversals
+        # (Proteção: se total < reversals, algo está errado, assume 0)
+        current_trend = max(0, (open_positions or 0) - current_reversals)
+        
+        approved_slots = False
+        slot_reason = ""
+        
+        if is_reversal:
+            # Bucket Reversal
+            if current_reversals < limit_reversal:
+                approved_slots = True
+                logger.info(f"🟢 Slot Reversal DISPONÍVEL ({current_reversals}/{limit_reversal})")
+            else:
+                slot_reason = f"Slots de Reversão cheios ({current_reversals}/{limit_reversal})"
+        else:
+            # Bucket Trend
+            # Sniper adiciona slots ao bucket Trend? Geralmente sim.
+            limit_total_trend = limit_trend + (extra_slots if is_sniper else 0)
+            
+            if current_trend < limit_total_trend:
+                approved_slots = True
+            else:
+                slot_reason = f"Slots de Tendência cheios ({current_trend}/{limit_total_trend})"
 
-        max_allowed_for_signal = self.max_positions_allowed
-        if signal.get("sniper"):
-            max_allowed_for_signal = self.max_positions_allowed + max(0, extra_slots)
-
-        if open_positions is not None and open_positions >= max_allowed_for_signal:
-            reason = f"Max positions atingido ({open_positions}/{max_allowed_for_signal})"
+        if not approved_slots:
+            reason = slot_reason
             self._track_rejection(reason)
             return {
                 "approved": False,

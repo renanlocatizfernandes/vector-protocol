@@ -26,6 +26,7 @@ from api.database import SessionLocal
 from api.models.trades import Trade
 from utils.telegram_notifier import telegram_notifier
 from utils.helpers import round_step_size
+from utils.redis_client import redis_client
 
 logger = setup_logger("order_executor")
 
@@ -139,17 +140,19 @@ class OrderExecutor:
         - Logs liquidity score and execution risk
         - Helps prevent trades with high slippage
 
-        Returns: True if liquidity is acceptable, False otherwise (but doesn't block)
+        Returns: True if liquidity is acceptable, False otherwise
         """
         try:
             from modules.market_intelligence import market_intelligence
 
             # Get order book depth metrics
             depth_data = await market_intelligence.get_order_book_depth(symbol)
-
             if not depth_data:
-                logger.debug(f"⚠️ {symbol}: Não foi possível obter dados de profundidade do order book")
-                return True  # Não bloqueia se não conseguir dados
+                logger.debug(f"Order book depth unavailable for {symbol}")
+                if getattr(self.settings, "ORDER_BOOK_BLOCK_INVALID", True):
+                    signal["order_book_block_reason"] = "Order book depth unavailable"
+                    return False
+                return True
 
             bid_liq = depth_data.get('bid_liquidity_5pct', 0)
             ask_liq = depth_data.get('ask_liquidity_5pct', 0)
@@ -178,6 +181,11 @@ class OrderExecutor:
                     f"  Min lado: ${min_side_liq:,.0f} < ${min_liquidity_usd:,.0f}\n"
                     f"  Risco de alto slippage na execução"
                 )
+                if getattr(self.settings, "ORDER_BOOK_BLOCK_LOW_LIQUIDITY", True):
+                    signal["order_book_block_reason"] = (
+                        f"Low liquidity: min side ${min_side_liq:,.0f} < ${min_liquidity_usd:,.0f}"
+                    )
+                    return False
 
             # Log warning if execution risk is HIGH
             if execution_risk == 'HIGH':
@@ -196,11 +204,14 @@ class OrderExecutor:
                 'imbalance_ratio': imbalance
             }
 
-            return True  # Não bloqueia, apenas avisa
+            return True
 
         except Exception as e:
             logger.debug(f"Error validating order book depth for {symbol}: {e}")
-            return True  # Fail open - não bloqueia em caso de erro
+            if getattr(self.settings, "ORDER_BOOK_BLOCK_INVALID", True):
+                signal["order_book_block_reason"] = "Order book validation error"
+                return False
+            return True
     
     async def execute_signal(
         self,
@@ -254,7 +265,11 @@ class OrderExecutor:
 
             # ✅ PROFIT OPTIMIZATION: Order Book Depth Filtering
             if getattr(self.settings, "ENABLE_ORDER_BOOK_FILTER", True):
-                await self._validate_order_book_depth(symbol, signal)
+                depth_ok = await self._validate_order_book_depth(symbol, signal)
+                if not depth_ok:
+                    reason = signal.get("order_book_block_reason", "Order book validation failed")
+                    logger.warning(f"{symbol}: {reason}")
+                    return {'success': False, 'reason': reason}
 
             # Obter informações do símbolo
             symbol_info = await binance_client.get_symbol_info(symbol)
@@ -503,6 +518,16 @@ class OrderExecutor:
                 # ✅ NOVO v4.0: Tracking de falhas
                 self._track_order_failure(symbol, order_type_used or "UNKNOWN", order_result.get('reason', 'Unknown'))
                 return order_result
+
+            # ✅ SMART REVERSAL: Atualizar contador no Redis se for reversal
+            if signal.get('is_reversal'):
+                try:
+                    if redis_client and redis_client.client:
+                        redis_client.client.incr("risk:counters:reversal")
+                        redis_client.client.set(f"positions:metadata:{symbol}", "REVERSAL")
+                        logger.info(f"🔢 Redis Counter: Reversal position incremented for {symbol}")
+                except Exception as e:
+                    logger.error(f"Failed to increment reversal counter: {e}")
             
             # ================================
             # 6.5 CONSOLIDAR ORDENS (Limpeza)
@@ -1304,26 +1329,25 @@ class OrderExecutor:
             stop_price = round_step_size(stop_price, symbol_info['tick_size'])
             
             workingType = 'MARK_PRICE' if self.settings.USE_MARK_PRICE_FOR_STOPS else 'CONTRACT_PRICE'
-            order_params = {
-                "symbol": symbol,
-                "side": side,
-                "type": "STOP_MARKET",
-                "stopPrice": stop_price,
-                "quantity": quantity,
-                "workingType": workingType
-            }
-            if position_side:
-                order_params["positionSide"] = position_side
-            order = await asyncio.to_thread(
-                self.client.futures_create_order,
-                **order_params
+            result = await binance_client.place_stop_loss_order(
+                symbol=symbol,
+                side=side,
+                stop_price=stop_price,
+                quantity=quantity,
+                position_side=position_side,
+                working_type=workingType
             )
-            
-            logger.info(f"✅ Stop loss configurado: {stop_price:.4f}")
-            
+
+            if result.get("success"):
+                order = result.get("order", {})
+                logger.info(f"Stop loss configurado: {stop_price:.4f} (algo={result.get('algo')})")
+                return {
+                    'success': True,
+                    'order_id': order.get('orderId')
+                }
             return {
-                'success': True,
-                'order_id': order['orderId']
+                'success': False,
+                'reason': result.get('reason', 'Stop loss failed')
             }
             
 

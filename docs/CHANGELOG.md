@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `.agent/rules/` with bootstrap/governance rules.
 - `docs/GOVERNANCE.md`, `docs/RUNBOOK.md`, `docs/VERSIONING.md`.
 - **Signal Generator**: Implemented "Smart Reversal" logic (v5.1). Now allows LONG/SHORT trades against 4h trend if extreme conditions (RSI > 75/<25, Divergences) are met.
+- **Risk Manager**: Implemented Dedicated Reversal Slots (Buckets). Reversal trades now use a separate slot quota (default 50% of max positions) managed via Redis counters, independent of Trend slots.
 
 ### Changed
 
