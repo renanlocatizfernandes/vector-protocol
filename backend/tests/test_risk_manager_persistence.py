@@ -20,6 +20,7 @@ def mock_settings():
         settings.MAX_POSITIONS = 5
         settings.SNIPER_RISK_PER_TRADE = 0.01
         settings.SNIPER_EXTRA_SLOTS = 2
+        settings.REVERSAL_EXTRA_SLOTS_PCT = 0.5  # ✅ Added missing mock
         settings.DAILY_MAX_LOSS_PCT = 0.05
         settings.INTRADAY_DRAWDOWN_HARD_STOP_PCT = 0.10
         mock.return_value = settings
