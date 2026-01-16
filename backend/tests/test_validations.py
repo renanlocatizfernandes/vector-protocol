@@ -432,7 +432,7 @@ class TestIntegration:
         for component in supervisor.thresholds.keys():
             supervisor.heartbeat(component)
         
-        # Explicitamente atualizar health status
+        # Simular verificação de saúde para atualizar system_state
         await supervisor._check_health()
         
         status = supervisor.get_status()
