@@ -15,6 +15,15 @@ try:
 except ImportError:
     ML_ANALYTICS_AVAILABLE = False
     logger.warning("⚠️ ML Analytics not available (dependencies not installed)")
+
+# Advanced Strategies (optional)
+try:
+    from api.routes import strategies
+    STRATEGIES_AVAILABLE = True
+except ImportError:
+    STRATEGIES_AVAILABLE = False
+    logger.warning("⚠️ Advanced Strategies not available (dependencies not installed)")
+
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
@@ -292,6 +301,11 @@ app.include_router(database_config.router, prefix="/api/database-config", tags=[
 if ML_ANALYTICS_AVAILABLE:
     app.include_router(ml_analytics.router)
     logger.info("🧠 ML Analytics endpoints registered")
+
+# 🎯 Advanced Trading Strategies
+if STRATEGIES_AVAILABLE:
+    app.include_router(strategies.router)
+    logger.info("🎯 Advanced Trading Strategies endpoints registered")
 
 
 @app.get("/", tags=["Health"])
