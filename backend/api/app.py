@@ -7,6 +7,14 @@ from models.database import engine, Base, SessionLocal
 from api.models import trades, trading_rules
 from api.routes import positions, config, market, trading, system, rules
 from api.routes import database_config
+
+# ML Analytics (optional - graceful degradation if ML not available)
+try:
+    from api.routes import ml_analytics
+    ML_ANALYTICS_AVAILABLE = True
+except ImportError:
+    ML_ANALYTICS_AVAILABLE = False
+    logger.warning("⚠️ ML Analytics not available (dependencies not installed)")
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
@@ -279,6 +287,11 @@ app.include_router(rules.router, tags=["Rules"])
 
 # ✅ NOVA: Database de Configurações
 app.include_router(database_config.router, prefix="/api/database-config", tags=["Database Config"])
+
+# 🧠 ML Analytics (Adaptive Intelligence Engine)
+if ML_ANALYTICS_AVAILABLE:
+    app.include_router(ml_analytics.router)
+    logger.info("🧠 ML Analytics endpoints registered")
 
 
 @app.get("/", tags=["Health"])

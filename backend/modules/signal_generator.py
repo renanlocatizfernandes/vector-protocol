@@ -1,5 +1,5 @@
 """
-Signal Generator - PROFESSIONAL VERSION v5.0
+Signal Generator - ADAPTIVE INTELLIGENCE VERSION v6.0
 🔴 CORREÇÃO CRÍTICA #4: Score mínimo 70 (antes 60)
 ✅ Volume threshold 50% (antes 30%)
 ✅ RSI 30/70 clássico (antes 35/65)
@@ -9,9 +9,16 @@ Signal Generator - PROFESSIONAL VERSION v5.0
 ✅ v4.0: Detecção de padrões de candlestick (reversão/continuação)
 ✅ v4.0: Aproveitamento otimizado de quedas e altas extremas
 ✅ v4.0: Detecção de oversold/overbought mais precisa
-✅ NOVO v5.0: RSI Divergence Detection (Regular & Hidden)
-✅ NOVO v5.0: ADX Trend Strength Filter (evita ranging markets)
-✅ NOVO v5.0: VWAP Integration (institutional-grade support/resistance)
+✅ v5.0: RSI Divergence Detection (Regular & Hidden)
+✅ v5.0: ADX Trend Strength Filter (evita ranging markets)
+✅ v5.0: VWAP Integration (institutional-grade support/resistance)
+✅ NOVO v6.0: ADAPTIVE INTELLIGENCE ENGINE 🧠
+    - Regime-based parameter adaptation
+    - ML ensemble scoring (XGBoost + RandomForest + Logistic)
+    - Dynamic indicator weighting
+    - Anomaly detection & loss pattern filtering
+    - PID-controlled risk management
+    - Continuous learning from trade outcomes
 """
 import asyncio
 import pandas as pd
@@ -24,14 +31,21 @@ from modules.risk_calculator import risk_calculator
 from utils.binance_client import binance_client
 from config.settings import get_settings
 
+# Adaptive Intelligence Engine (optional)
+try:
+    from modules.ml.adaptive_engine import adaptive_engine
+    ML_AVAILABLE = True
+    logger_ml = setup_logger("signal_generator_ml")
+    logger_ml.info("🧠 Adaptive Intelligence Engine AVAILABLE")
+except ImportError as e:
+    ML_AVAILABLE = False
+    logger_ml = None
+
 logger = setup_logger("signal_generator")
 
 
 class SignalGenerator:
     def __init__(self):
-        # Configurações via Settings (presets por ambiente)
-        self.settings = get_settings()
-
         # Configurações via Settings (presets por ambiente)
         self.settings = get_settings()
 
@@ -54,56 +68,158 @@ class SignalGenerator:
         # Stop loss e take profit
         self.atr_multiplier = 2.0  # Stop loss 2.0x ATR
         self.tp_multiplier = 4.0  # Take profit 4.0x ATR
-        
-        logger.info("✅ Signal Generator PROFISSIONAL v4.0 inicializado")
+
+        # 🧠 Adaptive Intelligence Engine
+        self.ml_enabled = ML_AVAILABLE and getattr(self.settings, "ML_ENABLED", True)
+        self.adaptive_engine = adaptive_engine if self.ml_enabled else None
+
+        version = "v6.0 (ADAPTIVE INTELLIGENCE)" if self.ml_enabled else "v5.0 (TRADITIONAL)"
+        logger.info(f"✅ Signal Generator {version} inicializado")
         logger.info(f"🎯 Score mínimo: {self.min_score}")
         logger.info(f"📊 Volume threshold: {self.volume_threshold*100:.0f}%")
         logger.info(f"📈 RSI: {self.rsi_oversold}/{self.rsi_overbought}")
         logger.info(f"🔍 Confirmação de trend: {'✅ ATIVA' if self.require_trend_confirmation else '❌'}")
         logger.info(f"📊 Indicadores avançados: MACD, Bollinger Bands, Padrões de Candlestick")
+
+        if self.ml_enabled:
+            logger.info("🧠 ML Mode: ENABLED")
+            logger.info("   - Regime-based adaptation")
+            logger.info("   - Ensemble ML scoring")
+            logger.info("   - Anomaly filtering")
+            logger.info("   - Continuous learning")
     
     def reload_settings(self):
         """Recarrega configurações dinamicamente"""
         from config.settings import get_settings
         self.settings = get_settings()
-        
+
         # Atualizar atributos derivados
         self.min_score = int(getattr(self.settings, "PROD_MIN_SCORE", 70))
         self.volume_threshold = float(getattr(self.settings, "PROD_VOLUME_THRESHOLD", 0.5))
         self.rsi_oversold = int(getattr(self.settings, "PROD_RSI_OVERSOLD", 30))
         self.rsi_overbought = int(getattr(self.settings, "PROD_RSI_OVERBOUGHT", 70))
-        
+
         logger.info(f"🔄 Signal Generator settings reloaded (Min Score: {self.min_score}, Vol Thresh: {self.volume_threshold})")
-    
+
+    async def _apply_adaptive_config(self):
+        """
+        Aplica configurações adaptativas do ML engine
+        """
+        if not self.ml_enabled:
+            return
+
+        try:
+            # Get adaptive config
+            config = await self.adaptive_engine.get_adaptive_config()
+
+            # Apply dynamic parameters
+            self.min_score = config.get('min_score', self.min_score)
+            self.rsi_oversold = config.get('rsi_oversold', self.rsi_oversold)
+            self.rsi_overbought = config.get('rsi_overbought', self.rsi_overbought)
+            self.volume_threshold = config.get('volume_threshold_pct', 50.0) / 100.0
+            self.atr_multiplier = config.get('stop_loss_atr_mult', self.atr_multiplier)
+
+            if logger_ml:
+                logger_ml.info(f"🎯 Adaptive config applied: "
+                             f"MinScore={self.min_score}, "
+                             f"RSI={self.rsi_oversold}/{self.rsi_overbought}, "
+                             f"Regime={config.get('regime_name', 'unknown')}")
+
+        except Exception as e:
+            logger.error(f"Error applying adaptive config: {e}")
+
+    async def _enhance_signal_with_ml(self, symbol: str, base_signal: Dict) -> Optional[Dict]:
+        """
+        Enhance traditional signal with ML evaluation
+
+        Args:
+            symbol: Trading symbol
+            base_signal: Traditional signal analysis
+
+        Returns:
+            Enhanced signal with ML scores or None if rejected
+        """
+        if not self.ml_enabled or not base_signal:
+            return base_signal
+
+        try:
+            # Evaluate with ML
+            ml_evaluation = await self.adaptive_engine.evaluate_trade_opportunity(
+                symbol,
+                base_signal
+            )
+
+            # If ML rejects, return None
+            if ml_evaluation['action'] == 'SKIP':
+                if logger_ml:
+                    logger_ml.info(f"❌ {symbol}: {ml_evaluation['reason']}")
+                return None
+
+            # Enhance signal with ML data
+            enhanced_signal = base_signal.copy()
+            enhanced_signal.update({
+                'ml_score': ml_evaluation['ml_score'],
+                'traditional_score': ml_evaluation['traditional_score'],
+                'final_score': ml_evaluation['final_score'],
+                'ml_regime': ml_evaluation['regime'],
+                'ml_top_indicators': ml_evaluation.get('top_indicators', []),
+                'score': ml_evaluation['final_score'],  # Override score with ML-enhanced version
+            })
+
+            if logger_ml:
+                logger_ml.info(f"✅ {symbol}: ML={ml_evaluation['ml_score']:.1f}, "
+                             f"Trad={ml_evaluation['traditional_score']:.1f}, "
+                             f"Final={ml_evaluation['final_score']:.1f}")
+
+            return enhanced_signal
+
+        except Exception as e:
+            logger.error(f"Error enhancing signal with ML: {e}")
+            return base_signal  # Fallback to traditional signal
+
     async def generate_signal(self, scan_results: List[Dict]) -> List[Dict]:
         """
         Gera sinais de alta qualidade com filtros rigorosos
+        Com suporte para Adaptive Intelligence Engine (v6.0)
         """
-        
+
         if not scan_results:
             return []
-        
+
+        # Apply adaptive configuration if ML is enabled
+        await self._apply_adaptive_config()
+
         signals = []
-        
+
         for symbol_data in scan_results:
             try:
+                # Traditional analysis
                 signal = await self._analyze_symbol(symbol_data)
-                
+
                 if signal and signal['score'] >= self.min_score:
-                    signals.append(signal)
-                    
+                    # Enhance with ML if enabled
+                    if self.ml_enabled:
+                        symbol = symbol_data.get('symbol', '')
+                        enhanced_signal = await self._enhance_signal_with_ml(symbol, signal)
+
+                        if enhanced_signal:  # ML may reject the signal
+                            signals.append(enhanced_signal)
+                    else:
+                        signals.append(signal)
+
             except Exception as e:
                 logger.error(f"Erro ao analisar {symbol_data.get('symbol', 'Unknown')}: {e}")
-        
+
         # Ordenar por score (maior primeiro)
         signals.sort(key=lambda x: x['score'], reverse=True)
-        
+
         if signals:
+            ml_suffix = " (ML-enhanced)" if self.ml_enabled else ""
             logger.info(
-                f"✅ {len(signals)} sinal(is) gerado(s)\n"
+                f"✅ {len(signals)} sinal(is) gerado(s){ml_suffix}\n"
                 f"  Top 3 scores: {[s['score'] for s in signals[:3]]}"
             )
-        
+
         return signals
     
     async def generate_signals_batch(self, limit: int = 30, min_score: int = 55) -> List[Dict]:

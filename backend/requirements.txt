@@ -47,3 +47,27 @@ pytest-asyncio==0.24.0
 python-dateutil==2.9.0.post0
 psutil==6.1.0
 urllib3==2.2.0
+
+# ============================================================
+# Machine Learning & Adaptive Intelligence Engine
+# ============================================================
+
+# Core ML Libraries
+scikit-learn==1.5.2
+xgboost==2.1.2
+scipy==1.14.1
+
+# Bayesian Optimization
+scikit-optimize==0.10.2
+
+# Association Rules Mining
+mlxtend==0.23.1
+
+# Control Systems
+simple-pid==2.0.0
+
+# Background Tasks
+celery==5.4.0
+
+# Model Persistence
+joblib==1.4.2
