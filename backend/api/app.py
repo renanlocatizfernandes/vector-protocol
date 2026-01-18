@@ -32,6 +32,14 @@ except ImportError:
     MARKET_INTELLIGENCE_AVAILABLE = False
     logger.warning("⚠️ Market Intelligence not available (dependencies not installed)")
 
+# Capital Management (optional)
+try:
+    from api.routes import capital_management
+    CAPITAL_MANAGEMENT_AVAILABLE = True
+except ImportError:
+    CAPITAL_MANAGEMENT_AVAILABLE = False
+    logger.warning("⚠️ Capital Management not available (dependencies not installed)")
+
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
@@ -319,6 +327,11 @@ if STRATEGIES_AVAILABLE:
 if MARKET_INTELLIGENCE_AVAILABLE:
     app.include_router(market_intelligence.router)
     logger.info("📊 Market Intelligence endpoints registered")
+
+# 💰 Capital Management
+if CAPITAL_MANAGEMENT_AVAILABLE:
+    app.include_router(capital_management.router)
+    logger.info("💰 Capital Management endpoints registered")
 
 
 @app.get("/", tags=["Health"])
