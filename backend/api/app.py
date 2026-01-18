@@ -40,6 +40,14 @@ except ImportError:
     CAPITAL_MANAGEMENT_AVAILABLE = False
     logger.warning("⚠️ Capital Management not available (dependencies not installed)")
 
+# User Control & Visibility (optional)
+try:
+    from api.routes import user_control
+    USER_CONTROL_AVAILABLE = True
+except ImportError:
+    USER_CONTROL_AVAILABLE = False
+    logger.warning("⚠️ User Control & Visibility not available (dependencies not installed)")
+
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
@@ -332,6 +340,11 @@ if MARKET_INTELLIGENCE_AVAILABLE:
 if CAPITAL_MANAGEMENT_AVAILABLE:
     app.include_router(capital_management.router)
     logger.info("💰 Capital Management endpoints registered")
+
+# 🎛️ User Control & Visibility
+if USER_CONTROL_AVAILABLE:
+    app.include_router(user_control.router)
+    logger.info("🎛️ User Control & Visibility endpoints registered")
 
 
 @app.get("/", tags=["Health"])
