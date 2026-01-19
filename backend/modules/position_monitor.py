@@ -262,12 +262,19 @@ class PositionMonitor:
         
         while self.monitoring:
             try:
+                # ✅ Verificar se estamos banidos (skip iteration se sim)
+                if binance_client.is_banned():
+                    remaining = binance_client.get_ban_remaining()
+                    logger.debug(f"⏸️ Monitoramento pausado - Ban: {remaining:.0f}s restantes")
+                    await asyncio.sleep(min(remaining + 2, self.monitor_interval))
+                    continue
+
                 # ✅ NOVO: Verificar kill switch
                 if await self._check_kill_switch():
                     logger.error("🔴 KILL SWITCH ATIVADO - Parando trading")
                     self.stop_monitoring()
                     break
-                
+
                 # Buscar posições da Binance
                 binance_positions = await asyncio.to_thread(self.client.futures_position_information)
                 open_positions_binance = [

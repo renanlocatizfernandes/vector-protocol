@@ -466,19 +466,22 @@ class BinanceClientManager:
         import time
         now = time.time()
 
-        # ✅ Verificar se estamos banidos
+        # ✅ Verificar se estamos banidos - FAIL FAST (não dormir, apenas lançar exceção)
         if self._banned_until > now:
             wait_time = self._banned_until - now
-            logger.warning(f"🚫 IP BANIDO pela Binance. Aguardando {wait_time:.0f}s (max 15min)...")
-            await asyncio.sleep(min(wait_time + 5, 900))  # Max 15 min wait
-            self._banned_until = 0
-            self._request_times = []
-            return
+            # Log apenas a cada 30 segundos para evitar spam
+            if not hasattr(self, '_last_ban_log') or now - self._last_ban_log > 30:
+                self._last_ban_log = now
+                logger.warning(f"🚫 IP BANIDO pela Binance. Ban expira em {wait_time:.0f}s")
+            # Criar exceção com JSON válido para evitar erro de parsing
+            import json
+            error_json = json.dumps({"code": -1003, "msg": f"IP banned for {wait_time:.0f}s more"})
+            raise BinanceAPIException(None, -1003, error_json)
 
         # Limpar requisições antigas (mais de 60 segundos)
         self._request_times = [t for t in self._request_times if now - t < 60]
 
-        # Se estamos perto do limite, aguardar
+        # Se estamos perto do limite, aguardar (com lock para evitar múltiplos waits)
         if len(self._request_times) >= self._max_requests_per_minute:
             wait_time = 60 - (now - self._request_times[0])
             if wait_time > 0:
@@ -488,6 +491,16 @@ class BinanceClientManager:
 
         # Registrar nova requisição
         self._request_times.append(now)
+
+    def is_banned(self) -> bool:
+        """Verifica se estamos banidos da Binance (útil para callers skiparem operações)"""
+        import time
+        return self._banned_until > time.time()
+
+    def get_ban_remaining(self) -> float:
+        """Retorna segundos restantes do ban (0 se não banido)"""
+        import time
+        return max(0, self._banned_until - time.time())
 
     async def _retry_call(self, fn, *args, attempts: int = 3, base_sleep: float = 1.0, **kwargs):
         """

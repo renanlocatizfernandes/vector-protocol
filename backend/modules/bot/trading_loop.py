@@ -17,6 +17,7 @@ from modules.supervisor import supervisor  # ✅ NOVO
 from modules.metrics_dashboard import metrics_dashboard  # ✅ PASSO 4: Metrics Dashboard
 from modules.pnl_reconciler import check_pnl_divergence
 from config.settings import get_settings
+from utils.binance_client import binance_client
 
 logger = setup_logger("trading_loop")
 
@@ -48,10 +49,17 @@ class TradingLoop:
         await asyncio.sleep(3)
 
         while self.running:
+            # ✅ Verificar se estamos banidos da Binance
+            if binance_client.is_banned():
+                remaining = binance_client.get_ban_remaining()
+                logger.warning(f"⏸️ Trading loop pausado - Ban da Binance: {remaining:.0f}s restantes")
+                await asyncio.sleep(min(remaining + 5, 60))  # Wait up to 60s, then recheck
+                continue
+
             # ✅ NOVO PR1: Gerar cycle_id único para correlação de eventos
             cycle_id = str(uuid.uuid4())
             supervisor.heartbeat("trading_loop") # ✅ Heartbeat
-            
+
             try:
                 cycle_start_time = time.time()
                 
