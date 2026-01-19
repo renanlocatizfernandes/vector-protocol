@@ -7,6 +7,9 @@ from models.database import engine, Base, SessionLocal
 from api.models import trades, trading_rules
 from api.routes import positions, config, market, trading, system, rules
 from api.routes import database_config
+from utils.logger import setup_logger
+
+logger = setup_logger("api")
 
 # ML Analytics (optional - graceful degradation if ML not available)
 try:
@@ -14,7 +17,7 @@ try:
     ML_ANALYTICS_AVAILABLE = True
 except ImportError:
     ML_ANALYTICS_AVAILABLE = False
-    logger.warning("⚠️ ML Analytics not available (dependencies not installed)")
+    logger.warning("ML Analytics not available (dependencies not installed)")
 
 # Advanced Strategies (optional)
 try:
@@ -22,7 +25,7 @@ try:
     STRATEGIES_AVAILABLE = True
 except ImportError:
     STRATEGIES_AVAILABLE = False
-    logger.warning("⚠️ Advanced Strategies not available (dependencies not installed)")
+    logger.warning("Advanced Strategies not available (dependencies not installed)")
 
 # Market Intelligence (optional)
 try:
@@ -30,7 +33,7 @@ try:
     MARKET_INTELLIGENCE_AVAILABLE = True
 except ImportError:
     MARKET_INTELLIGENCE_AVAILABLE = False
-    logger.warning("⚠️ Market Intelligence not available (dependencies not installed)")
+    logger.warning("Market Intelligence not available (dependencies not installed)")
 
 # Capital Management (optional)
 try:
@@ -38,7 +41,7 @@ try:
     CAPITAL_MANAGEMENT_AVAILABLE = True
 except ImportError:
     CAPITAL_MANAGEMENT_AVAILABLE = False
-    logger.warning("⚠️ Capital Management not available (dependencies not installed)")
+    logger.warning("Capital Management not available (dependencies not installed)")
 
 # User Control & Visibility (optional)
 try:
@@ -46,7 +49,7 @@ try:
     USER_CONTROL_AVAILABLE = True
 except ImportError:
     USER_CONTROL_AVAILABLE = False
-    logger.warning("⚠️ User Control & Visibility not available (dependencies not installed)")
+    logger.warning("User Control & Visibility not available (dependencies not installed)")
 
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
