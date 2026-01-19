@@ -319,6 +319,14 @@ class BinanceClientManager:
             self.redis = None
             self.cache_enabled = False
         
+        # ✅ Rate Limiter para evitar ban da Binance
+        self._request_times: list = []  # Timestamps de requisições
+        self._max_requests_per_minute = int(getattr(settings, 'API_MAX_REQUESTS_PER_MINUTE', 800))
+        self._price_cache_ttl = int(getattr(settings, 'PRICE_CACHE_TTL_SEC', 5))
+        self._rate_limit_lock = asyncio.Lock() if asyncio else None
+        self._banned_until: float = 0  # Timestamp até quando está banido
+        logger.info(f"🔒 Rate limiter: {self._max_requests_per_minute} req/min, price cache TTL: {self._price_cache_ttl}s")
+
         # Estado do User Data Stream
         self._twm: Optional[ThreadedWebsocketManager] = None
         self._listen_key: Optional[str] = None
@@ -453,11 +461,42 @@ class BinanceClientManager:
         except Exception as e:
             logger.warning(f"Cache invalidation error for {pattern}: {e}")
     
+    async def _check_rate_limit(self):
+        """Verifica e aplica rate limiting para evitar ban da Binance"""
+        import time
+        now = time.time()
+
+        # ✅ Verificar se estamos banidos
+        if self._banned_until > now:
+            wait_time = self._banned_until - now
+            logger.warning(f"🚫 IP BANIDO pela Binance. Aguardando {wait_time:.0f}s (max 15min)...")
+            await asyncio.sleep(min(wait_time + 5, 900))  # Max 15 min wait
+            self._banned_until = 0
+            self._request_times = []
+            return
+
+        # Limpar requisições antigas (mais de 60 segundos)
+        self._request_times = [t for t in self._request_times if now - t < 60]
+
+        # Se estamos perto do limite, aguardar
+        if len(self._request_times) >= self._max_requests_per_minute:
+            wait_time = 60 - (now - self._request_times[0])
+            if wait_time > 0:
+                logger.warning(f"⏳ Rate limit: aguardando {wait_time:.1f}s ({len(self._request_times)} reqs/min)")
+                await asyncio.sleep(wait_time + 1)
+                self._request_times = []
+
+        # Registrar nova requisição
+        self._request_times.append(now)
+
     async def _retry_call(self, fn, *args, attempts: int = 3, base_sleep: float = 1.0, **kwargs):
         """
         Executa chamada do client em thread (não bloqueia o event loop) com retries exponenciais (1s, 2s, 4s).
         Retorna o resultado ou relança a última exceção.
         """
+        # ✅ Verificar rate limit antes de chamar API
+        await self._check_rate_limit()
+
         for attempt in range(attempts):
             try:
                 if not self.client:
@@ -466,7 +505,20 @@ class BinanceClientManager:
                 return await asyncio.to_thread(fn, *args, **kwargs)
             except BinanceAPIException as e:
                 # ✅ NOVO: Não tentar novamente se for erro fatal (Ban ou Config)
-                if e.code in (-1003, -4061):
+                if e.code == -1003:
+                    # Extrair timestamp do ban da mensagem
+                    import re
+                    import time
+                    match = re.search(r'banned until (\d+)', str(e.message))
+                    if match:
+                        ban_timestamp = int(match.group(1)) / 1000  # Converter ms para s
+                        self._banned_until = ban_timestamp
+                        wait_time = ban_timestamp - time.time()
+                        logger.error(f"🚫 IP BANIDO até {wait_time:.0f}s. Todas as chamadas serão pausadas.")
+                    else:
+                        self._banned_until = time.time() + 120  # Default 2 min ban
+                    raise
+                if e.code == -4061:
                     logger.error(f"❌ Erro FATAL da Binance ({e.code}): {e.message} - Abortando retries.")
                     raise
                 
@@ -602,7 +654,7 @@ class BinanceClientManager:
                 logger.error(f"Erro inesperado ao obter preço de {symbol}: {e}")
                 return None
         
-        return await self._cached_call(cache_key, ttl=2, fetch_fn=_fetch)
+        return await self._cached_call(cache_key, ttl=self._price_cache_ttl, fetch_fn=_fetch)
     
     async def get_top_futures_symbols(self, limit: int = 100):
         """Retorna os top N símbolos de futuros por volume com retries"""
@@ -1173,6 +1225,29 @@ class BinanceClientManager:
         except Exception as e:
             logger.warning(f"Falha futures_klines({symbol}): {e}")
             return []
+
+    async def get_historical_klines(self, symbol: str, interval: str, limit: int = 500) -> list:
+        """
+        Get historical klines - alias for futures_klines.
+        Used by ML modules and strategies.
+        """
+        return await self.futures_klines(symbol, interval, limit)
+
+    async def get_ticker(self, symbol: str) -> Dict:
+        """
+        Get ticker price data for a symbol.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_symbol_ticker,
+                symbol=symbol,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha get_ticker({symbol}): {e}")
+            return {}
 
     async def futures_symbol_ticker(self, symbol: str = None) -> Dict:
         """Get futures symbol ticker."""

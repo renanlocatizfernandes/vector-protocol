@@ -33,7 +33,9 @@ class PositionMonitor:
     def __init__(self):
         self.client = binance_client.client
         self.monitoring = False
-        self.monitor_interval = 6  # segundos
+        from config.settings import get_settings
+        settings = get_settings()
+        self.monitor_interval = int(getattr(settings, 'POSITION_MONITOR_INTERVAL_SEC', 15))
         
         # Circuit breaker global
         self.consecutive_losses = 0

@@ -262,6 +262,11 @@ class Settings(BaseSettings):
     POSITIONS_AUTO_SYNC_MINUTES: int = 10
     POSITIONS_AUTO_SYNC_STRICT: bool = False
 
+    # Rate Limiting (evitar ban da Binance)
+    POSITION_MONITOR_INTERVAL_SEC: int = 15  # Intervalo de monitoramento (era 6s)
+    API_MAX_REQUESTS_PER_MINUTE: int = 800  # Limite seguro (Binance permite 1200)
+    PRICE_CACHE_TTL_SEC: int = 5  # Cache de preços (era 2s)
+
     # Virtual Balance (opera "como se fosse" uma banca fixa)
     VIRTUAL_BALANCE_ENABLED: bool = False
     VIRTUAL_BALANCE_USDT: float = 100.0
