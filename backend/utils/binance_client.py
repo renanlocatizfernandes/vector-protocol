@@ -1001,6 +1001,364 @@ class BinanceClientManager:
             logger.warning(f"Falha get_open_interest_change({symbol}): {e}")
             return {"symbol": symbol, "period": period, "pct_change": 0.0}
 
+    # ============================================================
+    # Market Intelligence Wrapper Methods
+    # ============================================================
+
+    async def futures_order_book(self, symbol: str, limit: int = 500) -> Dict:
+        """
+        Get futures order book depth.
+        Wrapper for python-binance futures_order_book.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_order_book,
+                symbol=symbol,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data
+        except Exception as e:
+            logger.warning(f"Falha futures_order_book({symbol}): {e}")
+            return {"bids": [], "asks": []}
+
+    async def futures_funding_rate(self, symbol: str, limit: int = 1) -> list:
+        """
+        Get funding rate history.
+        Wrapper for python-binance futures_funding_rate.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_funding_rate,
+                symbol=symbol,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_funding_rate({symbol}): {e}")
+            return []
+
+    async def futures_open_interest(self, symbol: str) -> Dict:
+        """
+        Get current open interest.
+        Wrapper for python-binance futures_open_interest.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_open_interest,
+                symbol=symbol,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data
+        except Exception as e:
+            logger.warning(f"Falha futures_open_interest({symbol}): {e}")
+            return {"openInterest": "0"}
+
+    async def futures_open_interest_hist(self, symbol: str, period: str = "5m", limit: int = 12) -> list:
+        """
+        Get open interest history.
+        Wrapper for python-binance futures_open_interest_hist.
+        """
+        if self.testnet:
+            return []
+        try:
+            data = await self._retry_call(
+                self.client.futures_open_interest_hist,
+                symbol=symbol,
+                period=period,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_open_interest_hist({symbol}): {e}")
+            return []
+
+    async def futures_mark_price(self, symbol: str) -> Dict:
+        """
+        Get mark price and funding rate info.
+        Wrapper for python-binance futures_mark_price.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_mark_price,
+                symbol=symbol,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data
+        except Exception as e:
+            logger.warning(f"Falha futures_mark_price({symbol}): {e}")
+            return {"markPrice": "0", "indexPrice": "0", "lastFundingRate": "0"}
+
+    async def futures_account(self) -> Dict:
+        """
+        Get futures account information.
+        Wrapper for python-binance futures_account.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_account,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data
+        except Exception as e:
+            logger.warning(f"Falha futures_account: {e}")
+            return {
+                "totalWalletBalance": "0",
+                "availableBalance": "0",
+                "totalUnrealizedProfit": "0",
+                "totalMarginBalance": "0",
+                "positions": []
+            }
+
+    async def futures_account_balance(self) -> list:
+        """
+        Get futures account balance.
+        Wrapper for python-binance futures_account_balance.
+        """
+        try:
+            data = await self._retry_call(
+                self.client.futures_account_balance,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_account_balance: {e}")
+            return []
+
+    async def futures_position_information(self, symbol: str = None) -> list:
+        """
+        Get futures position information.
+        Wrapper for python-binance futures_position_information.
+        """
+        try:
+            if symbol:
+                data = await self._retry_call(
+                    self.client.futures_position_information,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            else:
+                data = await self._retry_call(
+                    self.client.futures_position_information,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_position_information: {e}")
+            return []
+
+    async def futures_klines(self, symbol: str, interval: str, limit: int = 500) -> list:
+        """Get futures klines/candlestick data."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_klines,
+                symbol=symbol,
+                interval=interval,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_klines({symbol}): {e}")
+            return []
+
+    async def futures_symbol_ticker(self, symbol: str = None) -> Dict:
+        """Get futures symbol ticker."""
+        try:
+            if symbol:
+                data = await self._retry_call(
+                    self.client.futures_symbol_ticker,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            else:
+                data = await self._retry_call(
+                    self.client.futures_symbol_ticker,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_symbol_ticker: {e}")
+            return {}
+
+    async def futures_create_order(self, **kwargs) -> Dict:
+        """Create futures order."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_create_order,
+                attempts=2,
+                base_sleep=0.5,
+                **kwargs
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.error(f"Falha futures_create_order: {e}")
+            raise
+
+    async def futures_change_leverage(self, symbol: str, leverage: int) -> Dict:
+        """Change futures leverage."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_change_leverage,
+                symbol=symbol,
+                leverage=leverage,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_change_leverage({symbol}): {e}")
+            return {}
+
+    async def futures_get_open_orders(self, symbol: str = None) -> list:
+        """Get open futures orders."""
+        try:
+            if symbol:
+                data = await self._retry_call(
+                    self.client.futures_get_open_orders,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            else:
+                data = await self._retry_call(
+                    self.client.futures_get_open_orders,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_get_open_orders: {e}")
+            return []
+
+    async def futures_cancel_order(self, symbol: str, orderId: int) -> Dict:
+        """Cancel futures order."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_cancel_order,
+                symbol=symbol,
+                orderId=orderId,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_cancel_order({symbol}, {orderId}): {e}")
+            return {}
+
+    async def futures_get_order(self, symbol: str, orderId: int) -> Dict:
+        """Get futures order details."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_get_order,
+                symbol=symbol,
+                orderId=orderId,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_get_order({symbol}, {orderId}): {e}")
+            return {}
+
+    async def futures_get_all_orders(self, symbol: str = None) -> list:
+        """Get all futures orders."""
+        try:
+            if symbol:
+                data = await self._retry_call(
+                    self.client.futures_get_all_orders,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            else:
+                data = await self._retry_call(
+                    self.client.futures_get_all_orders,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_get_all_orders: {e}")
+            return []
+
+    async def futures_cancel_all_open_orders(self, symbol: str) -> Dict:
+        """Cancel all open futures orders for a symbol."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_cancel_all_open_orders,
+                symbol=symbol,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_cancel_all_open_orders({symbol}): {e}")
+            return {}
+
+    async def futures_global_long_short_ratio(self, symbol: str, period: str = "5m", limit: int = 1) -> list:
+        """Get global long/short account ratio."""
+        if self.testnet:
+            return []
+        try:
+            data = await self._retry_call(
+                self.client.futures_global_longshort_ratio,
+                symbol=symbol,
+                period=period,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_global_long_short_ratio({symbol}): {e}")
+            return []
+
+    async def futures_top_long_short_account_ratio(self, symbol: str, period: str = "5m", limit: int = 1) -> list:
+        """Get top trader long/short account ratio."""
+        if self.testnet:
+            return []
+        try:
+            data = await self._retry_call(
+                self.client.futures_top_longshort_account_ratio,
+                symbol=symbol,
+                period=period,
+                limit=limit,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else []
+        except Exception as e:
+            logger.warning(f"Falha futures_top_long_short_account_ratio({symbol}): {e}")
+            return []
+
+    async def futures_exchange_info(self) -> Dict:
+        """Get futures exchange info."""
+        try:
+            data = await self._retry_call(
+                self.client.futures_exchange_info,
+                attempts=2,
+                base_sleep=0.5
+            )
+            return data if data else {}
+        except Exception as e:
+            logger.warning(f"Falha futures_exchange_info: {e}")
+            return {}
+
     async def get_taker_long_short_ratio(self, symbol: str, period: str = "5m", limit: int = 12) -> Dict:
         """
         Retorna o último buySellRatio (taker long/short volume) no período.
