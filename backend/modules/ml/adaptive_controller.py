@@ -12,7 +12,7 @@ from skopt.space import Real, Integer
 from sqlalchemy import select, and_
 
 from utils.logger import setup_logger
-from api.models.database import SessionLocal
+from models.database import SessionLocal
 from api.models.ml_models import MLTradeFeature
 
 logger = setup_logger("adaptive_controller")

@@ -230,6 +230,11 @@ export async function syncPositions(params?: { mode?: "normal" | "strict"; stric
   return unwrap(res);
 }
 
+export async function getClosedTrades(): Promise<{ trades: any[] }> {
+  const res = await http.get("/api/positions/trades/closed");
+  return unwrap(res);
+}
+
 // Position actions
 export async function closePositionExchange(symbol: string): Promise<any> {
   const res = await http.post("/api/trading/positions/close-exchange", null, { params: { symbol } });

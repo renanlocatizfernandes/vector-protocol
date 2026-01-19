@@ -172,7 +172,7 @@ async def get_strategy_config(symbol: Optional[str] = Query(None)):
         Strategy configuration
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from sqlalchemy import text
 
         with SessionLocal() as db:
@@ -223,7 +223,7 @@ async def update_strategy_config(config: StrategyConfigUpdate):
         Updated configuration
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from sqlalchemy import text
 
         with SessionLocal() as db:
@@ -409,7 +409,7 @@ async def get_strategy_performance_summary():
         Performance statistics by mode
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from sqlalchemy import text
 
         with SessionLocal() as db:
@@ -447,7 +447,7 @@ async def get_performance_by_mode(
         Detailed performance metrics
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from sqlalchemy import text
 
         with SessionLocal() as db:
@@ -514,7 +514,7 @@ async def get_trailing_stop_effectiveness(days: int = Query(30, ge=1, le=90)):
         Trailing stop analytics
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from sqlalchemy import text
 
         with SessionLocal() as db:

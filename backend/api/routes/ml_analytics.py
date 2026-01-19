@@ -166,7 +166,7 @@ async def get_filter_rules(active_only: bool = Query(True)):
         List of filter rules with metrics
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from api.models.ml_models import FilterRule
         from sqlalchemy import select
 
@@ -217,7 +217,7 @@ async def toggle_filter_rule(rule_id: int):
         Updated rule status
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from api.models.ml_models import FilterRule
         from sqlalchemy import select
 
@@ -332,7 +332,7 @@ async def get_performance_by_regime(days: int = Query(30, ge=7, le=90)):
         Performance metrics grouped by regime
     """
     try:
-        from api.models.database import SessionLocal
+        from models.database import SessionLocal
         from api.models.ml_models import MLTradeFeature
         from sqlalchemy import select, and_
         import pandas as pd

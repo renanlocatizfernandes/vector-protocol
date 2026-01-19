@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from utils.logger import setup_logger
 from utils.binance_client import binance_client
-from api.models.database import SessionLocal
+from models.database import SessionLocal
 from api.models.ml_models import MLTradeFeature
 
 logger = setup_logger("feature_store")

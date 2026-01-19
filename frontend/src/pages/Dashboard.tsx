@@ -4,6 +4,7 @@ import { PerformanceChart } from '../components/PerformanceChart';
 import { BotStatus } from '../components/BotStatus';
 import { PositionsTable } from '../components/PositionsTable';
 import { RealizedPnlChart } from '../components/RealizedPnlChart';
+import { TradeHistory } from '../components/TradeHistory';
 import { HealthDashboard } from '../components/HealthDashboard';
 import { SniperOperations } from '../components/SniperOperations';
 import { TrendingUp, ShieldCheck, Activity, Zap, AlertCircle, Target, TrendingDown, DollarSign, Coins, BarChart3, AlertTriangle } from 'lucide-react';
@@ -141,9 +142,8 @@ export const Dashboard: React.FC = () => {
             </div>
             <p className="text-xs font-bold text-slate-600 uppercase">P&L Hoje (Exchange)</p>
             <p
-              className={`text-2xl font-bold ${
-                exDaily === null ? "text-slate-500" : exDaily >= 0 ? "text-green-600" : "text-red-600"
-              }`}
+              className={`text-2xl font-bold ${exDaily === null ? "text-slate-500" : exDaily >= 0 ? "text-green-600" : "text-red-600"
+                }`}
             >
               {dailyPnlText}
             </p>
@@ -155,9 +155,8 @@ export const Dashboard: React.FC = () => {
             </div>
             <p className="text-xs font-bold text-slate-600 uppercase">Realizado (24h)</p>
             <p
-              className={`text-2xl font-bold ${
-                exRealized === null ? "text-slate-500" : exRealized >= 0 ? "text-green-600" : "text-red-600"
-              }`}
+              className={`text-2xl font-bold ${exRealized === null ? "text-slate-500" : exRealized >= 0 ? "text-green-600" : "text-red-600"
+                }`}
             >
               {realizedText}
             </p>
@@ -169,9 +168,8 @@ export const Dashboard: React.FC = () => {
             </div>
             <p className="text-xs font-bold text-slate-600 uppercase">Fees + Funding (24h)</p>
             <p
-              className={`text-2xl font-bold ${
-                feesFundingValue === null ? "text-slate-500" : feesFundingValue >= 0 ? "text-green-600" : "text-red-600"
-              }`}
+              className={`text-2xl font-bold ${feesFundingValue === null ? "text-slate-500" : feesFundingValue >= 0 ? "text-green-600" : "text-red-600"
+                }`}
             >
               {feesFundingText}
             </p>
@@ -183,9 +181,8 @@ export const Dashboard: React.FC = () => {
             </div>
             <p className="text-xs font-bold text-slate-600 uppercase">Nao Realizado</p>
             <p
-              className={`text-2xl font-bold ${
-                exUnrealized === null ? "text-slate-500" : exUnrealized >= 0 ? "text-green-600" : "text-red-600"
-              }`}
+              className={`text-2xl font-bold ${exUnrealized === null ? "text-slate-500" : exUnrealized >= 0 ? "text-green-600" : "text-red-600"
+                }`}
             >
               {unrealizedText}
             </p>
@@ -294,6 +291,11 @@ export const Dashboard: React.FC = () => {
           <div className="p-6">
             <PositionsTable />
           </div>
+        </div>
+
+        {/*  Trade History */}
+        <div className="glass-card-hover overflow-hidden">
+          <TradeHistory />
         </div>
 
         {/*  Health Dashboard - MOVED TO BOTTOM */}

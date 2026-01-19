@@ -7,7 +7,7 @@ from sqlalchemy import (
     ForeignKey, JSON, Text, UniqueConstraint
 )
 from sqlalchemy.sql import func
-from api.models.database import Base
+from models.database import Base
 
 
 class MLTradeFeature(Base):

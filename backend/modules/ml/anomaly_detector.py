@@ -12,7 +12,7 @@ from mlxtend.frequent_patterns import apriori, association_rules
 from sqlalchemy import select
 
 from utils.logger import setup_logger
-from api.models.database import SessionLocal
+from models.database import SessionLocal
 from api.models.ml_models import FilterRule
 from modules.ml.feature_store import feature_store
 
