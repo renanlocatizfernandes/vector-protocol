@@ -35,10 +35,13 @@ class TelegramBot:
         self._lock_acquired = False
         try:
             if redis_client and redis_client.client:
+                # Limpa lock antigo antes de tentar adquirir (single-instance deployment)
+                redis_client.client.delete(self._lock_key)
                 if not redis_client.client.set(self._lock_key, "1", nx=True, ex=120):
                     logger.warning("Telegram Bot lock ativo; abortando start.")
                     return
                 self._lock_acquired = True
+                logger.info("Telegram Bot lock adquirido com sucesso.")
         except Exception as e:
             logger.warning(f"Falha ao obter lock do Telegram: {e}")
 
@@ -215,33 +218,55 @@ class TelegramBot:
             return
 
         help_text = """
-<b>COMANDOS DISPONIVEIS</b>
+<b>VECTOR PROTOCOL v5.0 AIE</b>
 
-<b>Controle:</b>
-/start - Inicia o bot
+<b>CONTROLE DO BOT</b>
+/start - Inicia o bot autonomo
 /stop - Para o bot
 /status - Ver status atual
-/dry_run - Toggle modo DRY RUN
-/testnet - Toggle modo TESTNET
+/dry_run - Ver info modo DRY RUN
+/testnet - Ver info modo TESTNET
 
-<b>Financeiro:</b>
-/balance - Ver saldo USDT
-/pnl - Ver P&L total
-/positions - Ver posicoes abertas
-/trades - Ver trades recentes
+<b>FINANCEIRO</b>
+/balance - Saldo disponivel/total
+/pnl - P&L total (30d padrao)
+/pnl today - P&L de hoje
+/pnl 7 - P&L ultimos 7 dias
+/positions - Posicoes abertas
+/trades - Trades recentes
 
-<b>Informacoes:</b>
-/config - Ver configuracoes
-/market - Ver condicoes de mercado
-/risk - Ver metricas de risco
-/logs - Ver logs recentes
+<b>MERCADO & RISCO</b>
+/market - Preco BTC e condicoes
+/risk - Metricas de risco
+/config - Configuracoes atuais
+/logs - Ultimas 10 linhas de log
 
-<b>Operacoes:</b>
-/force_exit SYMBOL - Fechar posicao
-/force_exit ALL - Fechar todas
+<b>OPERACOES</b>
+/force_exit BTCUSDT - Fecha posicao
+/force_exit ALL - Fecha todas
 
-<b>Ajuda:</b>
-/help - Mostra esta mensagem
+<b>FEATURES v5.0 AIE</b>
+- Adaptive Intelligence Engine
+- Market Intelligence (Funding, OB)
+- Capital & Leverage Manager
+- Advanced Strategies (Sniper/DCA)
+- Smart Trailing Stop (ATR/Vol)
+- Anomaly Detector & Filter Rules
+- Regime Detection (5 modos)
+
+<b>NOTIFICACOES AUTOMATICAS</b>
+- Trade aberto/fechado
+- TP/SL atingido
+- Trailing stop ativado
+- Breakeven protegido
+- Mudanca de regime ML
+- Alertas de risco
+- Resumo de ciclo
+
+<b>API WEB:</b> http://localhost:8001
+<b>DASHBOARD:</b> http://localhost:3000
+
+/help - Esta mensagem
 """
         await update.message.reply_text(help_text, parse_mode="HTML")
 

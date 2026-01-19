@@ -79,6 +79,9 @@ class SignalGenerator:
         logger.info(f"📊 Volume threshold: {self.volume_threshold*100:.0f}%")
         logger.info(f"📈 RSI: {self.rsi_oversold}/{self.rsi_overbought}")
         logger.info(f"🔍 Confirmação de trend: {'✅ ATIVA' if self.require_trend_confirmation else '❌'}")
+        smart_reversal = getattr(self.settings, 'SMART_REVERSAL_ENABLED', True)
+        smart_rsi = getattr(self.settings, 'SMART_REVERSAL_RSI_THRESHOLD', 72)
+        logger.info(f"🔄 Smart Reversal: {'✅ ATIVO (RSI>' + str(smart_rsi) + ')' if smart_reversal else '❌'}")
         logger.info(f"📊 Indicadores avançados: MACD, Bollinger Bands, Padrões de Candlestick")
 
         if self.ml_enabled:
@@ -477,9 +480,11 @@ class SignalGenerator:
             
             # ✅ NOVO: Confirmar trend com 4h (Smart Reversal Logic)
             is_reversal_signal = False
+            smart_reversal_enabled = getattr(self.settings, 'SMART_REVERSAL_ENABLED', True)
+            smart_reversal_rsi = getattr(self.settings, 'SMART_REVERSAL_RSI_THRESHOLD', 72)
             if self.require_trend_confirmation:
-                # Permitir Short contra tendência SE for extremo ou divergência
-                is_reversal = is_extreme_pump or (rsi_divergence in ['BEARISH', 'HIDDEN_BEARISH']) or rsi > 75
+                # Permitir Short contra tendência SE for extremo ou divergência (Smart Reversal mais agressivo)
+                is_reversal = is_extreme_pump or (rsi_divergence in ['BEARISH', 'HIDDEN_BEARISH']) or (smart_reversal_enabled and rsi > smart_reversal_rsi)
                 
                 if not await self._confirm_trend_short(df_4h):
                     if is_reversal:

@@ -220,8 +220,8 @@ class AdaptiveIntelligenceEngine:
             # Step 4: Get traditional score from base signal
             traditional_score = base_signal.get('score', base_signal.get('confidence', 50))
 
-            # Step 5: Combine scores (70% ML, 30% traditional)
-            final_score = (ml_score * 0.70) + (traditional_score * 0.30)
+            # Step 5: Combine scores (50% ML, 50% traditional) - Balanceado até ter mais dados
+            final_score = (ml_score * 0.50) + (traditional_score * 0.50)
 
             # Step 6: Get dynamic weights for context
             weights = self.indicator_optimizer.get_dynamic_weights()

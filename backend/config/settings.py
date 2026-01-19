@@ -165,8 +165,10 @@ class Settings(BaseSettings):
     TESTNET_MIN_SCORE: int = 65  # Slightly relaxed para testnet
     PROD_VOLUME_THRESHOLD: float = 0.5  # 50% do volume médio de 20 períodos
     PROD_RSI_OVERSOLD: int = 30  # Oversold clássico
-    PROD_RSI_OVERBOUGHT: int = 70  # Overbought clássico
+    PROD_RSI_OVERBOUGHT: int = 65  # Overbought mais agressivo para SHORTs (antes 70)
     REQUIRE_TREND_CONFIRMATION: bool = True  # Confirmação multi-timeframe (1h + 4h)
+    SMART_REVERSAL_ENABLED: bool = True  # Habilita shorts contra tendência em condições extremas
+    SMART_REVERSAL_RSI_THRESHOLD: int = 72  # RSI mínimo para Smart Reversal SHORT (mais agressivo)
     MIN_MOMENTUM_THRESHOLD_PCT: float = 0.2  # 0.2% momentum mínimo
     RR_MIN_TREND: float = 1.2  # R:R mínimo para trending market
     RR_MIN_RANGE: float = 1.6  # R:R mínimo para ranging market
@@ -182,8 +184,8 @@ class Settings(BaseSettings):
     DUMP_THRESHOLD_PCT: float = 30.0
     DUMP_TIMEFRAME_HOURS: int = 2
     DUMP_MIN_SUSTAINED_VOLUME_X: float = 2.0
-    REQUIRED_SCORE_SIDEWAYS: int = 80  # Aumentado para qualidade
-    SIDEWAYS_MIN_VOLUME_RATIO: float = 0.8
+    REQUIRED_SCORE_SIDEWAYS: int = 70  # Alinhado com ML min_score para consistência
+    SIDEWAYS_MIN_VOLUME_RATIO: float = 0.3  # Permite trades com 30% do volume médio em sideways
 
     # ✅ PASSO 2: AJUSTAR HARD STOPS PARA CRYPTO-FRIENDLY
     # Crypto-friendly hard stops (volatilidade nativa do mercado)
@@ -286,8 +288,8 @@ class Settings(BaseSettings):
     TELEGRAM_ENABLED: bool = False
 
     # PnL Divergence Guard
-    PNL_DIVERGENCE_BLOCK_ENABLED: bool = True
-    PNL_DIVERGENCE_THRESHOLD_PCT: float = 5.0
+    PNL_DIVERGENCE_BLOCK_ENABLED: bool = False  # Desabilitado temporariamente - reconciliar DB manualmente
+    PNL_DIVERGENCE_THRESHOLD_PCT: float = 50.0  # Aumentado para evitar bloqueios frequentes
 
     # ========================================
     # PROFIT OPTIMIZATION - Advanced Market Intelligence

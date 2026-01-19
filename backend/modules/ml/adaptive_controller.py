@@ -119,7 +119,7 @@ class AdaptiveParameterController:
 
             # If Sharpe is low, increase selectivity and reduce risk
             if sharpe_adjustment < -2:
-                adjusted['min_score'] = min(90, adjusted['min_score'] + 5)
+                adjusted['min_score'] = min(80, adjusted['min_score'] + 3)  # Reduzido de 90/+5 para 80/+3
                 adjusted['max_positions'] = max(5, adjusted['max_positions'] - 2)
                 adjusted['risk_per_trade_pct'] = max(0.5, adjusted['risk_per_trade_pct'] * 0.9)
                 logger.info("  → Increasing selectivity (low Sharpe)")
@@ -139,8 +139,8 @@ class AdaptiveParameterController:
                 logger.info("  → Reducing risk (high drawdown)")
 
             # If win rate is low, tighten entry criteria
-            if win_rate < 0.50:
-                adjusted['min_score'] = min(90, adjusted['min_score'] + 5)
+            if win_rate < 0.40:  # Reduzido de 0.50 para 0.40
+                adjusted['min_score'] = min(80, adjusted['min_score'] + 3)  # Reduzido de 90/+5 para 80/+3
                 adjusted['adx_min'] = min(35, adjusted['adx_min'] + 2)
                 logger.info("  → Tightening criteria (low win rate)")
 
