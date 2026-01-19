@@ -7,6 +7,47 @@ from models.database import engine, Base, SessionLocal
 from api.models import trades, trading_rules
 from api.routes import positions, config, market, trading, system, rules
 from api.routes import database_config
+
+# ML Analytics (optional - graceful degradation if ML not available)
+try:
+    from api.routes import ml_analytics
+    ML_ANALYTICS_AVAILABLE = True
+except ImportError:
+    ML_ANALYTICS_AVAILABLE = False
+    logger.warning("⚠️ ML Analytics not available (dependencies not installed)")
+
+# Advanced Strategies (optional)
+try:
+    from api.routes import strategies
+    STRATEGIES_AVAILABLE = True
+except ImportError:
+    STRATEGIES_AVAILABLE = False
+    logger.warning("⚠️ Advanced Strategies not available (dependencies not installed)")
+
+# Market Intelligence (optional)
+try:
+    from api.routes import market_intelligence
+    MARKET_INTELLIGENCE_AVAILABLE = True
+except ImportError:
+    MARKET_INTELLIGENCE_AVAILABLE = False
+    logger.warning("⚠️ Market Intelligence not available (dependencies not installed)")
+
+# Capital Management (optional)
+try:
+    from api.routes import capital_management
+    CAPITAL_MANAGEMENT_AVAILABLE = True
+except ImportError:
+    CAPITAL_MANAGEMENT_AVAILABLE = False
+    logger.warning("⚠️ Capital Management not available (dependencies not installed)")
+
+# User Control & Visibility (optional)
+try:
+    from api.routes import user_control
+    USER_CONTROL_AVAILABLE = True
+except ImportError:
+    USER_CONTROL_AVAILABLE = False
+    logger.warning("⚠️ User Control & Visibility not available (dependencies not installed)")
+
 from api import backtesting, websocket
 from modules.config_database import Base as ConfigBase
 from utils.logger import setup_logger
@@ -279,6 +320,31 @@ app.include_router(rules.router, tags=["Rules"])
 
 # ✅ NOVA: Database de Configurações
 app.include_router(database_config.router, prefix="/api/database-config", tags=["Database Config"])
+
+# 🧠 ML Analytics (Adaptive Intelligence Engine)
+if ML_ANALYTICS_AVAILABLE:
+    app.include_router(ml_analytics.router)
+    logger.info("🧠 ML Analytics endpoints registered")
+
+# 🎯 Advanced Trading Strategies
+if STRATEGIES_AVAILABLE:
+    app.include_router(strategies.router)
+    logger.info("🎯 Advanced Trading Strategies endpoints registered")
+
+# 📊 Market Intelligence
+if MARKET_INTELLIGENCE_AVAILABLE:
+    app.include_router(market_intelligence.router)
+    logger.info("📊 Market Intelligence endpoints registered")
+
+# 💰 Capital Management
+if CAPITAL_MANAGEMENT_AVAILABLE:
+    app.include_router(capital_management.router)
+    logger.info("💰 Capital Management endpoints registered")
+
+# 🎛️ User Control & Visibility
+if USER_CONTROL_AVAILABLE:
+    app.include_router(user_control.router)
+    logger.info("🎛️ User Control & Visibility endpoints registered")
 
 
 @app.get("/", tags=["Health"])
