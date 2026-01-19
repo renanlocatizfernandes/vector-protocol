@@ -6,7 +6,7 @@ Detects losing trade patterns and generates filter rules
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 from sklearn.ensemble import IsolationForest
 from mlxtend.frequent_patterns import apriori, association_rules
 from sqlalchemy import select
