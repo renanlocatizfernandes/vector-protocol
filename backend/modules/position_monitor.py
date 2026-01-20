@@ -104,7 +104,7 @@ class PositionMonitor:
         logger.info(f"📈 Trailing Stop: Ativa após +{self.trailing_stop_activation}%")
         logger.info(f"💰 Take Profit Parcial: +{self.partial_tp_threshold}%")
         logger.info(f"🔴 Kill Switch: {self.max_drawdown_pct}% drawdown")
-        logger.info(f"📊 Métricas por evento: ATIVAS")
+        logger.info("📊 Métricas por evento: ATIVAS")
     
     def start_monitoring(self):
         """Inicia monitoramento de posições"""
@@ -351,7 +351,7 @@ class PositionMonitor:
                             if getattr(self.settings, "TRACK_FEES_PER_TRADE", True):
                                 try:
                                     from modules.profit_optimizer import profit_optimizer
-                                    from datetime import datetime, timedelta
+                                    # datetime e timedelta já importados no topo do arquivo
 
                                     # Check if we should refresh with REAL fees (every 5 minutes)
                                     should_refresh_real_fees = False

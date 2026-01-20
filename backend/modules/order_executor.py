@@ -102,7 +102,7 @@ class OrderExecutor:
         logger.info(f"🔄 Max Retries: {self.max_retries}")
         logger.info(f"🧊 ICEBERG Threshold: ${self.iceberg_threshold}")
         logger.info(f"🧮 Margem: default={'CROSSED' if self.default_margin_crossed else 'ISOLATED'} • auto-isolate ≥ {self.auto_isolate_min_leverage}x • override={self.allow_margin_override}")
-        logger.info(f"📊 Métricas estruturadas: ATIVAS")
+        logger.info("📊 Métricas estruturadas: ATIVAS")
     
     async def _validate_spread(self, symbol: str) -> tuple[bool, str]:
         """
@@ -616,7 +616,7 @@ class OrderExecutor:
                                 f"  Multiplos: {tp_multiples_str}"
                             )
                         else:
-                            logger.warning(f"⚠️ optimize_take_profit_levels retornou resultado inválido")
+                            logger.warning("⚠️ optimize_take_profit_levels retornou resultado inválido")
                     else:
                         logger.warning(f"⚠️ ATR inválido ({base_atr}), usando TPs estáticos")
                 except Exception as e:
@@ -1402,8 +1402,7 @@ class OrderExecutor:
             return {
                 "success": True,
                 "order_id": order['orderId'],
-                "callback_rate": float(callback_rate),
-                "working_type": workingType
+                "price": float(price)
             }
         except BinanceAPIException as e:
             if e.code == -4120:

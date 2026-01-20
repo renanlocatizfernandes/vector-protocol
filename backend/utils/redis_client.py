@@ -1,3 +1,4 @@
+import json
 import redis
 from config.settings import get_settings
 from utils.logger import setup_logger
