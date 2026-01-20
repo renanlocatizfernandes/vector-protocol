@@ -1,0 +1,62 @@
+[project]
+name = "vector-protocol"
+version = "1.1.0"
+description = "Autonomous cryptocurrency trading bot for Binance Futures"
+requires-python = ">=3.11"
+
+[tool.ruff]
+# Target Python version
+target-version = "py311"
+
+# Line length (same as Black default)
+line-length = 120
+
+# Exclude directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+    ".pytest_cache",
+    "logs",
+    "migrations",
+]
+
+[tool.ruff.lint]
+# Enable rules (conservative for legacy codebase)
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+]
+
+# Ignore specific rules (permissive for existing code)
+ignore = [
+    "E501",   # line too long (handled by line-length)
+    "E402",   # module level import not at top (common in FastAPI apps)
+    "E722",   # bare except (legacy code)
+    "E712",   # comparison to True/False (SQLAlchemy filters)
+    "E741",   # ambiguous variable name
+    "F401",   # imported but unused (many false positives in __init__.py)
+    "F841",   # local variable assigned but never used
+    "W291",   # trailing whitespace (cosmetic)
+    "W293",   # blank line contains whitespace (cosmetic)
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can have unused imports and assertions
+"**/tests/**" = ["F401", "F811"]
+# __init__ files can have unused imports
+"**/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["api", "modules", "utils", "config", "models"]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["backend/tests", "tests"]
+asyncio_mode = "auto"

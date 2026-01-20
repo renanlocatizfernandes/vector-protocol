@@ -2,6 +2,66 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+---
+
+## 🚨 SPEC-DRIVEN DEVELOPMENT (SDD) - OBRIGATÓRIO
+
+### Regra Principal
+**NUNCA implementar nada sem uma SPEC aprovada pelo usuário.**
+
+### Fases do Workflow SDD
+
+```
+1. REQUIREMENTS  →  2. DESIGN  →  3. TASKS  →  4. IMPLEMENTATION  →  5. VERIFY
+```
+
+| Fase | Descrição | Artefato |
+|------|-----------|----------|
+| **1. Requirements** | Entender o problema, perguntar dúvidas | Criar spec em `/specs/` |
+| **2. Design** | Propor solução técnica, arquitetura | Atualizar spec com design |
+| **3. Tasks** | Quebrar em tarefas pequenas e verificáveis | Checklist na spec |
+| **4. Implementation** | Codificar seguindo a spec aprovada | Código + testes |
+| **5. Verify** | Rodar testes, linters, validar manualmente | Marcar spec como DONE |
+
+### Regras Firmes
+
+1. **Antes de codar**: Sempre propor um plano e aguardar aprovação
+2. **Decisões importantes**: Registrar em `/specs/DECISIONS.md`
+3. **Antes de finalizar**: Sempre rodar testes e linters adequados
+4. **Templates obrigatórios**:
+   - Feature nova: `/specs/_TEMPLATE_FEATURE.md`
+   - Bugfix: `/specs/_TEMPLATE_BUGFIX.md`
+5. **Se faltar comando de teste/lint/build**: Perguntar ao usuário e registrar aqui
+
+### Comandos de Validação
+
+```bash
+# Backend (Python)
+PYTHONPATH=backend pytest -q backend/tests        # Testes
+ruff check backend/                               # Lint (erros)
+ruff check backend/ --fix                         # Lint + autofix
+ruff format backend/                              # Formatação
+
+# Frontend (React/TypeScript)
+cd frontend && npm test                           # Testes (Vitest)
+cd frontend && npm run build                      # Build/TypeCheck
+
+# Full Stack (Docker)
+docker compose up -d --build                      # Build completo
+curl -sS http://localhost:8000/health             # Health check
+```
+
+### Checklist Pré-Commit
+
+- [ ] Spec aprovada pelo usuário?
+- [ ] Lint passando? (`ruff check backend/`)
+- [ ] Testes passando? (`pytest` + `npm test`)
+- [ ] Build funcionando? (`npm run build`)
+- [ ] Decisões registradas em `/specs/DECISIONS.md`?
+- [ ] Documentação atualizada se necessário?
+
+---
+
 ## Project Overview
 
 **Antigravity Trading Bot** is an autonomous cryptocurrency trading system for Binance Futures. The system consists of:

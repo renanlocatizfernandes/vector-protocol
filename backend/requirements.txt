@@ -39,9 +39,10 @@ aiofiles==24.1.0
 # Retry & Resilience
 tenacity==9.0.0
 
-# Testing (Development)
+# Testing & Linting (Development)
 pytest==8.3.3
 pytest-asyncio==0.24.0
+ruff==0.8.6
 
 # Utilities
 python-dateutil==2.9.0.post0
