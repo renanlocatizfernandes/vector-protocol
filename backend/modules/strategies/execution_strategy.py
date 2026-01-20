@@ -220,7 +220,7 @@ class SniperStrategy(ExecutionStrategy):
                     logger.warning(f"  Sniper attempt {attempt+1} failed: {e}")
 
             # All attempts failed, fallback to market
-            logger.warning(f"⚠️ SNIPER timeout, executing MARKET order")
+            logger.warning("⚠️ SNIPER timeout, executing MARKET order")
 
             market_order = await binance_client.futures_create_order(
                 symbol=symbol,

@@ -86,7 +86,7 @@ async def open_position(config):
         print(f"   TP3: ${signal['take_profit_3']:.6f}")
         print(f"   SL: ${signal['stop_loss']:.6f}")
         print(f"   Momentum: RSI={config['rsi']}, Vol={config['volume_ratio']}x")
-        print(f"   Leverage: 10x (from $51 real balance)")
+        print("   Leverage: 10x (from $51 real balance)")
 
         # Execute signal
         print(f"\n3️⃣  Executing trade for {symbol}...")
@@ -169,7 +169,7 @@ async def main():
         print("  📊 Order Book Depth Validation")
         print("  🎯 Stop Loss & Take Profit Orders (Binance)")
         print("  📈 Position Monitoring in Real-time")
-        print(f"\n⏳ Monitor until positions reach +2% or close on TP")
+        print("\n⏳ Monitor until positions reach +2% or close on TP")
         print(f"{'='*70}\n")
 
     return len(successful) == 2

@@ -181,7 +181,7 @@ class RulesEngine:
             "leverage": getattr(settings, "SNIPER_DEFAULT_LEVERAGE", 5),
             "max_slots": getattr(settings, "SNIPER_EXTRA_SLOTS", 2)
         }
-        logger.debug(f"No sniper rules found, using fallback config")
+        logger.debug("No sniper rules found, using fallback config")
         return fallback
 
     async def get_risk_adjustment(self, symbol: str) -> Dict:

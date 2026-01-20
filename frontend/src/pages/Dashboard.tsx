@@ -7,7 +7,11 @@ import { RealizedPnlChart } from '../components/RealizedPnlChart';
 import { TradeHistory } from '../components/TradeHistory';
 import { HealthDashboard } from '../components/HealthDashboard';
 import { SniperOperations } from '../components/SniperOperations';
-import { TrendingUp, ShieldCheck, Activity, Zap, AlertCircle, Target, TrendingDown, DollarSign, Coins, BarChart3, AlertTriangle } from 'lucide-react';
+import { AIEStatusCard } from '../components/AIEStatusCard';
+import { MarketIntelligenceCard } from '../components/MarketIntelligenceCard';
+import { CapitalStatusCard } from '../components/CapitalStatusCard';
+import { AdvancedStrategiesCard } from '../components/AdvancedStrategiesCard';
+import { TrendingUp, ShieldCheck, Activity, Zap, AlertCircle, Target, TrendingDown, DollarSign, Coins, BarChart3, AlertTriangle, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getDatabaseConfig, updateDatabaseConfig, getDailyStats, type DailyStats } from '../services/api';
 
@@ -186,6 +190,26 @@ export const Dashboard: React.FC = () => {
             >
               {unrealizedText}
             </p>
+          </div>
+        </div>
+
+        {/*  AI & Advanced Features Section */}
+        <div className="relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 to-blue-500/5 rounded-2xl -z-10"></div>
+          <div className="p-1">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center">
+                <Brain className="w-4 h-4 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900">AI & Advanced Features</h2>
+              <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded-lg font-bold">v5.0 AIE</span>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <AIEStatusCard />
+              <MarketIntelligenceCard />
+              <CapitalStatusCard />
+              <AdvancedStrategiesCard />
+            </div>
           </div>
         </div>
 

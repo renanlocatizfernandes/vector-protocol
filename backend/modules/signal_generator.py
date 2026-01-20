@@ -82,7 +82,7 @@ class SignalGenerator:
         smart_reversal = getattr(self.settings, 'SMART_REVERSAL_ENABLED', True)
         smart_rsi = getattr(self.settings, 'SMART_REVERSAL_RSI_THRESHOLD', 72)
         logger.info(f"🔄 Smart Reversal: {'✅ ATIVO (RSI>' + str(smart_rsi) + ')' if smart_reversal else '❌'}")
-        logger.info(f"📊 Indicadores avançados: MACD, Bollinger Bands, Padrões de Candlestick")
+        logger.info("📊 Indicadores avançados: MACD, Bollinger Bands, Padrões de Candlestick")
 
         if self.ml_enabled:
             logger.info("🧠 ML Mode: ENABLED")

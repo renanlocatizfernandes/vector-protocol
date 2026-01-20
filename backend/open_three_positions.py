@@ -171,7 +171,7 @@ async def main():
         print("  📊 Order Book Depth Validation")
         print("  📈 Position Monitoring in Real-time")
         print("  🎯 Stop Loss & Take Profit Orders")
-        print(f"\n⏳ Monitor until all positions reach +2% or close on TP")
+        print("\n⏳ Monitor until all positions reach +2% or close on TP")
         print(f"{'='*70}\n")
 
     return len(successful) == 3

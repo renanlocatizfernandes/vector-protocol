@@ -123,7 +123,7 @@ def main():
     print("=" * 70)
     print("🚀 MONITORAMENTO CONTÍNUO INICIADO")
     print(f"   Check a cada {CHECK_INTERVAL} segundos")
-    print(f"   Capturando apenas eventos CRÍTICOS")
+    print("   Capturando apenas eventos CRÍTICOS")
     print("=" * 70)
 
     iteration = 0

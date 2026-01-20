@@ -66,12 +66,12 @@ async def check_prerequisites():
             missing.append(config)
     
     if missing:
-        print(f"⚠️  Alerta: Configurações não encontradas:")
+        print("⚠️  Alerta: Configurações não encontradas:")
         for config in missing:
             print(f"   • {config}")
         print("\n💡 Continuando mesmo assim (algumas configs podem ficar vazias)...")
     else:
-        print(f"✅ Todas as configurações importantes disponíveis")
+        print("✅ Todas as configurações importantes disponíveis")
     
     return True
 

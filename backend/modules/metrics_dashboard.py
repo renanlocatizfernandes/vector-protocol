@@ -342,7 +342,7 @@ class MetricsDashboard:
         if dashboard['stress_test'].get('active'):
             stress_stats = dashboard['stress_test']
             print("\n🔥 STRESS TEST:")
-            print(f"  Active: YES")
+            print("  Active: YES")
             print(f"  Signals: {stress_stats['signals_processed']}")
             print(f"  Duration: {stress_stats['duration_seconds']:.2f}s")
             print(f"  Rate: {stress_stats['signals_per_second']:.1f} signals/s")

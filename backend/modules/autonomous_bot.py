@@ -28,12 +28,10 @@ from modules.bot.trading_loop import TradingLoop
 from modules.bot.loops import BotLoops
 from modules.bot.strategies import BotStrategies
 from modules.bot.actions import BotActions
-from modules.risk_calculator import risk_calculator
 from modules.correlation_filter import correlation_filter
 from modules.market_filter import market_filter
 from modules.market_scanner import market_scanner
 from modules.order_executor import order_executor
-from modules.signal_generator import signal_generator
 from modules.metrics_collector import metrics_collector
 from modules.history_analyzer import history_analyzer
 from modules.supervisor import supervisor  # ✅ NOVO
@@ -375,6 +373,37 @@ class AutonomousBot:
         logger.info(f"  - Trades simultâneos: {self.bot_config.max_positions}")
         logger.info("=" * 60)
 
+        # Notificar startup com todas as features
+        try:
+            mode = "DRY RUN" if dry_run else "LIVE"
+            await telegram_notifier.notify_startup(version="v5.0 AIE", mode=mode)
+
+            # Notificar features ativas
+            features_msg = """
+🚀 <b>VECTOR PROTOCOL v5.0</b>
+
+<b>Features Ativas:</b>
+✅ Adaptive Intelligence Engine (AIE)
+✅ Market Intelligence System
+✅ Advanced Strategies (Sniper/DCA/Pyramid)
+✅ Smart Trailing Stop
+✅ Capital & Leverage Management
+✅ User Control & Visibility
+
+<b>Configuração:</b>
+⏱️ Scan: {scan}s | 🎯 Min Score: {score}
+📊 Max Positions: {positions} | ⚡ Leverage: Dynamic
+
+🟢 Sistema 100% operacional!
+""".format(
+                scan=self.bot_config.scan_interval,
+                score=self.bot_config.min_score,
+                positions=self.bot_config.max_positions
+            )
+            await telegram_notifier.send_message(features_msg)
+        except Exception as e:
+            logger.warning(f"Falha ao enviar notificação de startup: {e}")
+
         position_monitor.start_monitoring()
         self.loops.start()
         if not telegram_bot.running and not getattr(telegram_bot, "_starting", False):
@@ -392,7 +421,6 @@ class AutonomousBot:
 
     def get_metrics(self) -> Dict:
         """Retorna métricas agregadas de KPIs por ciclo"""
-        from modules.metrics_collector import metrics_collector
         return metrics_collector.get_cycle_summary()
     
     async def _pyramiding_loop(self):

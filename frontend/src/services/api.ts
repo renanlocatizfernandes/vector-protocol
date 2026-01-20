@@ -740,3 +740,248 @@ export function toSeconds(minutes?: number): number {
   if (!minutes && minutes !== 0) return 0;
   return Math.round((minutes as number) * 60);
 }
+
+// ========================================
+// NOVAS FEATURES - AIE, Market Intelligence, etc.
+// ========================================
+
+// ML Analytics Types
+export interface MLStatus {
+  initialized: boolean;
+  regime_detector_trained: boolean;
+  anomaly_detector_trained: boolean;
+  indicator_optimizer_trained: boolean;
+  current_regime?: string;
+  regime_configs_loaded?: number;
+  filter_rules_loaded?: number;
+}
+
+export interface RegimeInfo {
+  regime_id: number;
+  regime_name: string;
+  win_rate?: number;
+  avg_pnl_pct?: number;
+  sharpe_ratio?: number;
+  n_samples?: number;
+  config?: Record<string, any>;
+}
+
+export interface RegimesResponse {
+  current_regime_id?: number;
+  current_regime_name?: string;
+  regimes: RegimeInfo[];
+}
+
+export async function getMLStatus(): Promise<any> {
+  const res = await http.get("/api/ml/status");
+  return unwrap(res);
+}
+
+export async function getMLRegimes(): Promise<any> {
+  const res = await http.get("/api/ml/regimes");
+  return unwrap(res);
+}
+
+export async function getMLCurrentConfig(): Promise<Record<string, any>> {
+  const res = await http.get("/api/ml/config/current");
+  return unwrap(res);
+}
+
+// Market Intelligence Types
+export interface FundingSentiment {
+  symbol: string;
+  funding_rate: number;
+  funding_rate_pct: number;
+  next_funding_time?: number;
+  sentiment: string;
+  sentiment_score: number;
+  mark_price?: number;
+}
+
+export interface OrderBookAnalysis {
+  symbol: string;
+  bid_liquidity_5pct?: number;
+  ask_liquidity_5pct?: number;
+  imbalance_pct?: number;
+  dominant_side?: string;
+  depth_score?: number;
+  whale_walls?: Array<{ price: number; quantity: number; side: string }>;
+  support_levels?: number[];
+  resistance_levels?: number[];
+}
+
+export interface CompleteAnalysis {
+  symbol: string;
+  funding?: FundingSentiment;
+  orderbook?: OrderBookAnalysis;
+  mtf_confluence?: Record<string, any>;
+  volume_profile?: Record<string, any>;
+  liquidation_levels?: Record<string, any>;
+  recommendation?: Record<string, any>;
+  timestamp: string;
+}
+
+export async function getFundingSentiment(symbol: string): Promise<any> {
+  const res = await http.get(`/api/intelligence/funding/sentiment/${symbol}`);
+  return unwrap(res);
+}
+
+export async function getOrderBookAnalysis(symbol: string): Promise<any> {
+  const res = await http.get(`/api/intelligence/orderbook/analysis/${symbol}`);
+  return unwrap(res);
+}
+
+export async function getCompleteIntelligence(symbol: string): Promise<any> {
+  const res = await http.get(`/api/intelligence/complete-analysis/${symbol}`);
+  return unwrap(res);
+}
+
+export async function getPortfolioHeat(): Promise<any> {
+  const res = await http.get("/api/intelligence/risk/portfolio-heat");
+  return unwrap(res);
+}
+
+// Capital Management Types
+export interface MarginStatus {
+  total_wallet_balance: number;
+  total_margin_used: number;
+  margin_used_pct: number;
+  available_balance: number;
+  unrealized_pnl: number;
+  maintenance_margin?: number;
+  margin_level_pct?: number;
+  zone?: string;
+  can_open_new?: boolean;
+}
+
+export interface CapitalState {
+  balance: number;
+  equity: number;
+  margin_used: number;
+  margin_used_pct: number;
+  positions_count: number;
+  max_positions: number;
+  zone: string;
+  can_open_new: boolean;
+  safety_buffer_pct: number;
+}
+
+export interface DrawdownStatus {
+  current_drawdown_pct: number;
+  max_drawdown_pct: number;
+  peak_balance: number;
+  current_balance: number;
+  drawdown_level: string;
+  recovery_needed_pct: number;
+}
+
+export async function getCapitalState(): Promise<any> {
+  const res = await http.get("/api/capital/state");
+  return unwrap(res);
+}
+
+export async function getMarginStatus(): Promise<any> {
+  const res = await http.get("/api/capital/margin/status");
+  return unwrap(res);
+}
+
+export async function getDrawdownStatus(): Promise<any> {
+  const res = await http.get("/api/capital/drawdown/status");
+  return unwrap(res);
+}
+
+export async function getCapitalAnalysis(): Promise<any> {
+  const res = await http.get("/api/capital/analysis/complete");
+  return unwrap(res);
+}
+
+// Advanced Strategies Types
+export interface StrategiesConfig {
+  default_execution_mode: string;
+  default_trailing_mode: string;
+  sniper_enabled: boolean;
+  pyramid_enabled: boolean;
+  dca_enabled: boolean;
+  breakeven_enabled: boolean;
+  trailing_stop_pct?: number;
+  pyramid_max_entries?: number;
+  dca_max_entries?: number;
+  breakeven_trigger_pct?: number;
+}
+
+export interface ActiveTrailingStop {
+  symbol: string;
+  mode: string;
+  callback_pct: number;
+  peak_price: number;
+  current_price?: number;
+  activated_at: string;
+}
+
+export interface PerformanceSummary {
+  total_trades: number;
+  total_pnl: number;
+  win_rate: number;
+  avg_pnl_per_trade: number;
+  best_strategy?: string;
+  worst_strategy?: string;
+  by_strategy?: Record<string, { trades: number; pnl: number; win_rate: number }>;
+}
+
+export async function getStrategiesConfig(): Promise<any> {
+  const res = await http.get("/api/strategies/config");
+  return unwrap(res);
+}
+
+export async function getActiveTrailingStops(): Promise<any> {
+  const res = await http.get("/api/strategies/trailing-stop/active");
+  return unwrap(res);
+}
+
+export async function getStrategiesPerformance(): Promise<any> {
+  const res = await http.get("/api/strategies/performance/summary");
+  return unwrap(res);
+}
+
+// User Control Types
+export interface CompleteAnalytics {
+  sharpe_ratio: number;
+  sortino_ratio: number;
+  max_drawdown_pct: number;
+  current_drawdown_pct: number;
+  win_rate: number;
+  profit_factor: number;
+  total_trades: number;
+  total_pnl: number;
+  avg_trade_duration_minutes?: number;
+  best_trade?: { symbol: string; pnl: number };
+  worst_trade?: { symbol: string; pnl: number };
+}
+
+export interface CircuitBreakerStatus {
+  active: boolean;
+  triggered_at?: string;
+  reason?: string;
+  daily_loss_pct?: number;
+  max_daily_loss_pct?: number;
+}
+
+export async function getCompleteAnalytics(): Promise<CompleteAnalytics> {
+  const res = await http.get("/api/control/analytics/complete");
+  return unwrap(res);
+}
+
+export async function getCircuitBreakerStatus(): Promise<CircuitBreakerStatus> {
+  const res = await http.get("/api/control/emergency/circuit-breaker/status");
+  return unwrap(res);
+}
+
+export async function panicCloseAll(): Promise<{ success: boolean; closed_positions: number }> {
+  const res = await http.post("/api/control/emergency/panic-close-all");
+  return unwrap(res);
+}
+
+export async function reduceAllPositions(percentage: number = 50): Promise<{ success: boolean; reduced_positions: number }> {
+  const res = await http.post("/api/control/emergency/reduce-all", null, { params: { percentage } });
+  return unwrap(res);
+}

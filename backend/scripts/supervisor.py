@@ -542,7 +542,7 @@ def main() -> None:
     elif args.cmd == "restart-api":
         service = getattr(args, "service", API_CONTAINER)
         compose_restart(service)
-        log_intervention(f"Restart concluído do serviço", f"service={service}")
+        log_intervention("Restart concluído do serviço", f"service={service}")
 
     elif args.cmd == "bot-start":
         ensure_stack_running()

@@ -1058,62 +1058,81 @@ class BinanceClientManager:
         """
         Retorna dados de premium/mark price do símbolo, incluindo lastFundingRate e nextFundingTime.
         Usa /fapi/v1/premiumIndex (python-binance: futures_mark_price).
+        Cache: 10s TTL (dados de preço são voláteis)
         """
-        try:
-            data = await self._retry_call(self.client.futures_mark_price, symbol=symbol, attempts=2, base_sleep=0.5)
-            # Campos relevantes: markPrice, indexPrice, lastFundingRate, nextFundingTime
-            return {
-                "symbol": symbol,
-                "markPrice": float(data.get("markPrice", 0) or 0),
-                "indexPrice": float(data.get("indexPrice", 0) or 0),
-                "lastFundingRate": float(data.get("lastFundingRate", 0) or 0),
-                "nextFundingTime": int(data.get("nextFundingTime", 0) or 0)
-            }
-        except Exception as e:
-            logger.warning(f"Falha get_premium_index({symbol}): {e}")
-            return {"symbol": symbol, "markPrice": 0.0, "indexPrice": 0.0, "lastFundingRate": 0.0, "nextFundingTime": 0}
+        cache_key = f"binance:premium_index:{symbol}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(self.client.futures_mark_price, symbol=symbol, attempts=2, base_sleep=0.5)
+                # Campos relevantes: markPrice, indexPrice, lastFundingRate, nextFundingTime
+                return {
+                    "symbol": symbol,
+                    "markPrice": float(data.get("markPrice", 0) or 0),
+                    "indexPrice": float(data.get("indexPrice", 0) or 0),
+                    "lastFundingRate": float(data.get("lastFundingRate", 0) or 0),
+                    "nextFundingTime": int(data.get("nextFundingTime", 0) or 0)
+                }
+            except Exception as e:
+                logger.warning(f"Falha get_premium_index({symbol}): {e}")
+                return {"symbol": symbol, "markPrice": 0.0, "indexPrice": 0.0, "lastFundingRate": 0.0, "nextFundingTime": 0}
+
+        return await self._cached_call(cache_key, ttl=10, fetch_fn=_fetch)
 
     async def get_open_interest(self, symbol: str) -> Dict:
         """
         Retorna open interest atual do símbolo (quantidade de contratos abertos).
+        Cache: 30s TTL (OI muda mais lentamente que preço)
         """
-        try:
-            data = await self._retry_call(self.client.futures_open_interest, symbol=symbol, attempts=2, base_sleep=0.5)
-            return {
-                "symbol": symbol,
-                "openInterest": float(data.get("openInterest", 0) or 0),
-                "time": int(data.get("time", 0) or 0)
-            }
-        except Exception as e:
-            logger.warning(f"Falha get_open_interest({symbol}): {e}")
-            return {"symbol": symbol, "openInterest": 0.0, "time": 0}
+        cache_key = f"binance:open_interest:{symbol}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(self.client.futures_open_interest, symbol=symbol, attempts=2, base_sleep=0.5)
+                return {
+                    "symbol": symbol,
+                    "openInterest": float(data.get("openInterest", 0) or 0),
+                    "time": int(data.get("time", 0) or 0)
+                }
+            except Exception as e:
+                logger.warning(f"Falha get_open_interest({symbol}): {e}")
+                return {"symbol": symbol, "openInterest": 0.0, "time": 0}
+
+        return await self._cached_call(cache_key, ttl=30, fetch_fn=_fetch)
 
     async def get_open_interest_change(self, symbol: str, period: str = "5m", limit: int = 12) -> Dict:
         """
         Retorna variação percentual aproximada do Open Interest ao longo de 'limit' períodos (ex.: 12*5m ~= 1h).
         Usa /futures/data/openInterestHist.
+        Cache: 120s TTL (dados históricos, não precisam de refresh frequente)
         """
         # Em TESTNET a família /futures/data pode não estar disponível → retornar neutro rapidamente
         if self.testnet:
             return {"symbol": symbol, "period": period, "pct_change": 0.0}
-        try:
-            hist = await self._retry_call(self.client.futures_open_interest_hist, symbol=symbol, period=period, limit=limit, attempts=2, base_sleep=0.5)
-            if not hist or len(hist) < 2:
+
+        cache_key = f"binance:oi_change:{symbol}:{period}:{limit}"
+
+        async def _fetch():
+            try:
+                hist = await self._retry_call(self.client.futures_open_interest_hist, symbol=symbol, period=period, limit=limit, attempts=2, base_sleep=0.5)
+                if not hist or len(hist) < 2:
+                    return {"symbol": symbol, "period": period, "pct_change": 0.0}
+                def _to_float(x):
+                    try:
+                        return float(x)
+                    except Exception:
+                        return 0.0
+                first = _to_float(hist[0].get("sumOpenInterest") or hist[0].get("sumOpenInterestValue") or 0)
+                last = _to_float(hist[-1].get("sumOpenInterest") or hist[-1].get("sumOpenInterestValue") or 0)
+                if first <= 0:
+                    return {"symbol": symbol, "period": period, "pct_change": 0.0}
+                pct = (last - first) / first * 100.0
+                return {"symbol": symbol, "period": period, "pct_change": pct}
+            except Exception as e:
+                logger.warning(f"Falha get_open_interest_change({symbol}): {e}")
                 return {"symbol": symbol, "period": period, "pct_change": 0.0}
-            def _to_float(x):
-                try:
-                    return float(x)
-                except Exception:
-                    return 0.0
-            first = _to_float(hist[0].get("sumOpenInterest") or hist[0].get("sumOpenInterestValue") or 0)
-            last = _to_float(hist[-1].get("sumOpenInterest") or hist[-1].get("sumOpenInterestValue") or 0)
-            if first <= 0:
-                return {"symbol": symbol, "period": period, "pct_change": 0.0}
-            pct = (last - first) / first * 100.0
-            return {"symbol": symbol, "period": period, "pct_change": pct}
-        except Exception as e:
-            logger.warning(f"Falha get_open_interest_change({symbol}): {e}")
-            return {"symbol": symbol, "period": period, "pct_change": 0.0}
+
+        return await self._cached_call(cache_key, ttl=120, fetch_fn=_fetch)
 
     # ============================================================
     # Market Intelligence Wrapper Methods
@@ -1123,92 +1142,123 @@ class BinanceClientManager:
         """
         Get futures order book depth.
         Wrapper for python-binance futures_order_book.
+        Cache: 5s TTL (order book is volatile but we don't need real-time for spread checks)
         """
-        try:
-            data = await self._retry_call(
-                self.client.futures_order_book,
-                symbol=symbol,
-                limit=limit,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data
-        except Exception as e:
-            logger.warning(f"Falha futures_order_book({symbol}): {e}")
-            return {"bids": [], "asks": []}
+        cache_key = f"binance:order_book:{symbol}:{limit}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_order_book,
+                    symbol=symbol,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data
+            except Exception as e:
+                logger.warning(f"Falha futures_order_book({symbol}): {e}")
+                return {"bids": [], "asks": []}
+
+        return await self._cached_call(cache_key, ttl=5, fetch_fn=_fetch)
 
     async def futures_funding_rate(self, symbol: str, limit: int = 1) -> list:
         """
         Get funding rate history.
         Wrapper for python-binance futures_funding_rate.
+        Cache: 60s TTL (funding rate updates every 8h, cached for efficiency)
         """
-        try:
-            data = await self._retry_call(
-                self.client.futures_funding_rate,
-                symbol=symbol,
-                limit=limit,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data if data else []
-        except Exception as e:
-            logger.warning(f"Falha futures_funding_rate({symbol}): {e}")
-            return []
+        cache_key = f"binance:funding_rate:{symbol}:{limit}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_funding_rate,
+                    symbol=symbol,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data if data else []
+            except Exception as e:
+                logger.warning(f"Falha futures_funding_rate({symbol}): {e}")
+                return []
+
+        return await self._cached_call(cache_key, ttl=60, fetch_fn=_fetch)
 
     async def futures_open_interest(self, symbol: str) -> Dict:
         """
         Get current open interest.
         Wrapper for python-binance futures_open_interest.
+        Cache: 30s TTL (OI changes slower than price)
         """
-        try:
-            data = await self._retry_call(
-                self.client.futures_open_interest,
-                symbol=symbol,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data
-        except Exception as e:
-            logger.warning(f"Falha futures_open_interest({symbol}): {e}")
-            return {"openInterest": "0"}
+        cache_key = f"binance:futures_oi:{symbol}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_open_interest,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data
+            except Exception as e:
+                logger.warning(f"Falha futures_open_interest({symbol}): {e}")
+                return {"openInterest": "0"}
+
+        return await self._cached_call(cache_key, ttl=30, fetch_fn=_fetch)
 
     async def futures_open_interest_hist(self, symbol: str, period: str = "5m", limit: int = 12) -> list:
         """
         Get open interest history.
         Wrapper for python-binance futures_open_interest_hist.
+        Cache: 120s TTL (historical data doesn't need frequent refresh)
         """
         if self.testnet:
             return []
-        try:
-            data = await self._retry_call(
-                self.client.futures_open_interest_hist,
-                symbol=symbol,
-                period=period,
-                limit=limit,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data if data else []
-        except Exception as e:
-            logger.warning(f"Falha futures_open_interest_hist({symbol}): {e}")
-            return []
+
+        cache_key = f"binance:oi_hist:{symbol}:{period}:{limit}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_open_interest_hist,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data if data else []
+            except Exception as e:
+                logger.warning(f"Falha futures_open_interest_hist({symbol}): {e}")
+                return []
+
+        return await self._cached_call(cache_key, ttl=120, fetch_fn=_fetch)
 
     async def futures_mark_price(self, symbol: str) -> Dict:
         """
         Get mark price and funding rate info.
         Wrapper for python-binance futures_mark_price.
+        Cache: 10s TTL (price data is volatile)
         """
-        try:
-            data = await self._retry_call(
-                self.client.futures_mark_price,
-                symbol=symbol,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data
-        except Exception as e:
-            logger.warning(f"Falha futures_mark_price({symbol}): {e}")
-            return {"markPrice": "0", "indexPrice": "0", "lastFundingRate": "0"}
+        cache_key = f"binance:mark_price:{symbol}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_mark_price,
+                    symbol=symbol,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data
+            except Exception as e:
+                logger.warning(f"Falha futures_mark_price({symbol}): {e}")
+                return {"markPrice": "0", "indexPrice": "0", "lastFundingRate": "0"}
+
+        return await self._cached_call(cache_key, ttl=10, fetch_fn=_fetch)
 
     async def futures_account(self) -> Dict:
         """
@@ -1448,40 +1498,58 @@ class BinanceClientManager:
             return {}
 
     async def futures_global_long_short_ratio(self, symbol: str, period: str = "5m", limit: int = 1) -> list:
-        """Get global long/short account ratio."""
+        """
+        Get global long/short account ratio.
+        Cache: 60s TTL (sentiment data changes slowly)
+        """
         if self.testnet:
-            return []
-        try:
-            data = await self._retry_call(
-                self.client.futures_global_longshort_ratio,
-                symbol=symbol,
-                period=period,
-                limit=limit,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data if data else []
-        except Exception as e:
-            logger.warning(f"Falha futures_global_long_short_ratio({symbol}): {e}")
             return []
 
+        cache_key = f"binance:global_ls_ratio:{symbol}:{period}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_global_longshort_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data if data else []
+            except Exception as e:
+                logger.warning(f"Falha futures_global_long_short_ratio({symbol}): {e}")
+                return []
+
+        return await self._cached_call(cache_key, ttl=60, fetch_fn=_fetch)
+
     async def futures_top_long_short_account_ratio(self, symbol: str, period: str = "5m", limit: int = 1) -> list:
-        """Get top trader long/short account ratio."""
+        """
+        Get top trader long/short account ratio.
+        Cache: 60s TTL (sentiment data changes slowly)
+        """
         if self.testnet:
             return []
-        try:
-            data = await self._retry_call(
-                self.client.futures_top_longshort_account_ratio,
-                symbol=symbol,
-                period=period,
-                limit=limit,
-                attempts=2,
-                base_sleep=0.5
-            )
-            return data if data else []
-        except Exception as e:
-            logger.warning(f"Falha futures_top_long_short_account_ratio({symbol}): {e}")
-            return []
+
+        cache_key = f"binance:top_ls_ratio:{symbol}:{period}"
+
+        async def _fetch():
+            try:
+                data = await self._retry_call(
+                    self.client.futures_top_longshort_account_ratio,
+                    symbol=symbol,
+                    period=period,
+                    limit=limit,
+                    attempts=2,
+                    base_sleep=0.5
+                )
+                return data if data else []
+            except Exception as e:
+                logger.warning(f"Falha futures_top_long_short_account_ratio({symbol}): {e}")
+                return []
+
+        return await self._cached_call(cache_key, ttl=60, fetch_fn=_fetch)
 
     async def futures_exchange_info(self) -> Dict:
         """Get futures exchange info."""
@@ -1500,51 +1568,58 @@ class BinanceClientManager:
         """
         Retorna o último buySellRatio (taker long/short volume) no período.
         >1 indica predominância de takers 'long'; <1, takers 'short'.
+        Cache: 60s TTL (dados de sentimento mudam lentamente)
         """
         # Em TESTNET alguns endpoints de dados agregados não retornam; responder neutro
         if self.testnet:
             return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
-        try:
-            if hasattr(self.client, "futures_taker_long_short_ratio"):
-                rows = await self._retry_call(
-                    self.client.futures_taker_long_short_ratio,
-                    symbol=symbol,
-                    period=period,
-                    limit=limit,
-                    attempts=2,
-                    base_sleep=0.5,
-                )
-            elif hasattr(self.client, "futures_takerlongshort_ratio"):
-                rows = await self._retry_call(
-                    self.client.futures_takerlongshort_ratio,
-                    symbol=symbol,
-                    period=period,
-                    limit=limit,
-                    attempts=2,
-                    base_sleep=0.5,
-                )
-            elif hasattr(self.client, "_request_futures_data_api"):
-                def _fetch():
-                    return self.client._request_futures_data_api(
-                        "get",
-                        "takerlongshortRatio",
-                        data={"symbol": symbol, "period": period, "limit": limit},
-                    )
-                rows = await self._retry_call(_fetch, attempts=2, base_sleep=0.5)
-            else:
-                raise AttributeError("futures taker ratio method unavailable")
-            if not rows:
-                return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
-            last = rows[-1]
-            ratio = 1.0
+
+        cache_key = f"binance:taker_ratio:{symbol}:{period}"
+
+        async def _fetch():
             try:
-                ratio = float(last.get("buySellRatio", 1) or 1)
-            except Exception:
+                if hasattr(self.client, "futures_taker_long_short_ratio"):
+                    rows = await self._retry_call(
+                        self.client.futures_taker_long_short_ratio,
+                        symbol=symbol,
+                        period=period,
+                        limit=limit,
+                        attempts=2,
+                        base_sleep=0.5,
+                    )
+                elif hasattr(self.client, "futures_takerlongshort_ratio"):
+                    rows = await self._retry_call(
+                        self.client.futures_takerlongshort_ratio,
+                        symbol=symbol,
+                        period=period,
+                        limit=limit,
+                        attempts=2,
+                        base_sleep=0.5,
+                    )
+                elif hasattr(self.client, "_request_futures_data_api"):
+                    def _fetch_inner():
+                        return self.client._request_futures_data_api(
+                            "get",
+                            "takerlongshortRatio",
+                            data={"symbol": symbol, "period": period, "limit": limit},
+                        )
+                    rows = await self._retry_call(_fetch_inner, attempts=2, base_sleep=0.5)
+                else:
+                    raise AttributeError("futures taker ratio method unavailable")
+                if not rows:
+                    return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
+                last = rows[-1]
                 ratio = 1.0
-            return {"symbol": symbol, "period": period, "buySellRatio": ratio}
-        except Exception as e:
-            logger.warning(f"Falha get_taker_long_short_ratio({symbol}): {e}")
-            return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
+                try:
+                    ratio = float(last.get("buySellRatio", 1) or 1)
+                except Exception:
+                    ratio = 1.0
+                return {"symbol": symbol, "period": period, "buySellRatio": ratio}
+            except Exception as e:
+                logger.warning(f"Falha get_taker_long_short_ratio({symbol}): {e}")
+                return {"symbol": symbol, "period": period, "buySellRatio": 1.0}
+
+        return await self._cached_call(cache_key, ttl=60, fetch_fn=_fetch)
 
     # ========== USER DATA STREAM (FUTURES) ==========
     def _handle_user_event(self, msg: Dict):

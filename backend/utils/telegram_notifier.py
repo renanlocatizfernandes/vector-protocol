@@ -404,5 +404,191 @@ class TelegramNotifier:
 """
         await self.send_message(message)
 
+    # ==================================================================
+    # NOTIFICAÇÕES DAS NOVAS FEATURES (AIE, Market Intelligence, etc.)
+    # ==================================================================
+
+    async def notify_market_intelligence(self, symbol: str, data: Dict):
+        """Notifica análise de Market Intelligence"""
+        sentiment = data.get('sentiment', 'NEUTRAL')
+        sentiment_score = data.get('sentiment_score', 0)
+        funding_rate = data.get('funding_rate', 0)
+        oi_change = data.get('oi_change_pct', 0)
+        bias = data.get('bias', 'NEUTRAL')
+
+        emoji = "🟢" if sentiment_score > 0 else "🔴" if sentiment_score < 0 else "⚪"
+        bias_emoji = "📈" if bias == "LONG" else "📉" if bias == "SHORT" else "➡️"
+
+        message = f"""
+🧠 <b>MARKET INTELLIGENCE</b>
+
+📊 <b>Símbolo:</b> {symbol}
+{emoji} <b>Sentiment:</b> {sentiment} ({sentiment_score:+.0f})
+{bias_emoji} <b>Bias:</b> {bias}
+
+💰 <b>Funding Rate:</b> {funding_rate:.4f}%
+📈 <b>OI Change:</b> {oi_change:+.2f}%
+"""
+        await self.send_message(message)
+
+    async def notify_orderbook_analysis(self, symbol: str, data: Dict):
+        """Notifica análise de Order Book"""
+        imbalance = data.get('imbalance_pct', 0)
+        dominant_side = data.get('dominant_side', 'NEUTRAL')
+        depth_score = data.get('depth_score', 0)
+        whale_walls = len(data.get('whale_walls', []))
+
+        side_emoji = "🟢" if dominant_side == "BID" else "🔴" if dominant_side == "ASK" else "⚪"
+
+        message = f"""
+📊 <b>ORDERBOOK ANALYSIS</b>
+
+📊 <b>Símbolo:</b> {symbol}
+{side_emoji} <b>Dominante:</b> {dominant_side}
+📈 <b>Imbalance:</b> {imbalance:+.1f}%
+💪 <b>Depth Score:</b> {depth_score}/100
+🐋 <b>Whale Walls:</b> {whale_walls}
+"""
+        await self.send_message(message)
+
+    async def notify_capital_status(self, data: Dict):
+        """Notifica status do Capital Management"""
+        margin_used = data.get('margin_used_pct', 0)
+        zone = data.get('zone', 'UNKNOWN')
+        can_open = data.get('can_open_new', False)
+        safety_buffer = data.get('safety_buffer_pct', 0)
+
+        zone_emoji = "🟢" if zone == "GREEN_ZONE" else "🟡" if zone == "YELLOW_ZONE" else "🔴"
+        open_emoji = "✅" if can_open else "❌"
+
+        message = f"""
+💰 <b>CAPITAL STATUS</b>
+
+{zone_emoji} <b>Zona:</b> {zone}
+📊 <b>Margem Usada:</b> {margin_used:.1f}%
+🛡️ <b>Safety Buffer:</b> {safety_buffer:.1f}%
+{open_emoji} <b>Pode Abrir:</b> {'Sim' if can_open else 'Não'}
+"""
+        await self.send_message(message)
+
+    async def notify_ml_regime_change(self, old_regime: str, new_regime: str, confidence: float):
+        """Notifica mudança de regime de mercado detectada pelo ML"""
+        message = f"""
+🤖 <b>ML REGIME CHANGE</b>
+
+📈 <b>Anterior:</b> {old_regime}
+📊 <b>Novo:</b> {new_regime}
+🎯 <b>Confiança:</b> {confidence:.1f}%
+
+⚙️ Parâmetros ajustados automaticamente.
+"""
+        await self.send_message(message)
+
+    async def notify_strategy_execution(self, strategy: str, symbol: str, action: str, details: Dict):
+        """Notifica execução de estratégia avançada"""
+        emoji = "🎯" if strategy == "SNIPER" else "🧱" if strategy == "PYRAMID" else "📉" if strategy == "DCA" else "🏃"
+
+        message = f"""
+{emoji} <b>STRATEGY: {strategy}</b>
+
+📊 <b>Símbolo:</b> {symbol}
+🎬 <b>Ação:</b> {action}
+💰 <b>Preço:</b> {details.get('price', 0):.6f}
+📦 <b>Quantidade:</b> {details.get('quantity', 0):.4f}
+"""
+        if details.get('reason'):
+            message += f"📌 <b>Motivo:</b> {details['reason']}\n"
+
+        await self.send_message(message)
+
+    async def notify_smart_trailing_update(self, symbol: str, mode: str, callback_pct: float, peak_price: float):
+        """Notifica atualização do Smart Trailing Stop"""
+        message = f"""
+🏃 <b>SMART TRAILING UPDATE</b>
+
+📊 <b>Símbolo:</b> {symbol}
+⚙️ <b>Modo:</b> {mode}
+📈 <b>Peak:</b> {peak_price:.6f}
+🔒 <b>Callback:</b> {callback_pct:.2f}%
+"""
+        await self.send_message(message)
+
+    async def notify_risk_heatmap(self, data: Dict):
+        """Notifica heatmap de risco do portfólio"""
+        total_risk = data.get('total_risk_pct', 0)
+        highest_risk_symbol = data.get('highest_risk_symbol', 'N/A')
+        highest_risk_pct = data.get('highest_risk_pct', 0)
+        positions_at_risk = data.get('positions_at_risk', 0)
+
+        risk_emoji = "🟢" if total_risk < 30 else "🟡" if total_risk < 60 else "🔴"
+
+        message = f"""
+🗺️ <b>RISK HEATMAP</b>
+
+{risk_emoji} <b>Risco Total:</b> {total_risk:.1f}%
+⚠️ <b>Maior Risco:</b> {highest_risk_symbol} ({highest_risk_pct:.1f}%)
+📊 <b>Posições em Risco:</b> {positions_at_risk}
+"""
+        await self.send_message(message)
+
+    async def notify_emergency_action(self, action: str, details: Dict):
+        """Notifica ação de emergência"""
+        message = f"""
+🚨 <b>EMERGENCY ACTION</b>
+
+⚡ <b>Ação:</b> {action}
+📊 <b>Posições Afetadas:</b> {details.get('positions_affected', 0)}
+💰 <b>Volume:</b> {details.get('volume_closed', 0):.2f} USDT
+📌 <b>Motivo:</b> {details.get('reason', 'N/A')}
+
+⚠️ Intervenção automática executada!
+"""
+        await self.send_message(message)
+
+    async def notify_system_health(self, data: Dict):
+        """Notifica saúde do sistema"""
+        status = data.get('status', 'unknown')
+        db_ok = data.get('db', False)
+        redis_ok = data.get('redis', False)
+        binance_ok = data.get('binance', False)
+        bot_running = data.get('bot_running', False)
+
+        status_emoji = "✅" if status == "healthy" else "⚠️" if status == "degraded" else "❌"
+
+        message = f"""
+🏥 <b>SYSTEM HEALTH</b>
+
+{status_emoji} <b>Status:</b> {status.upper()}
+{'✅' if db_ok else '❌'} Database
+{'✅' if redis_ok else '❌'} Redis
+{'✅' if binance_ok else '❌'} Binance API
+{'🟢' if bot_running else '🔴'} Bot
+
+⏰ {datetime.now().strftime('%H:%M:%S')}
+"""
+        await self.send_message(message)
+
+    async def notify_bot_cycle_summary(self, data: Dict):
+        """Notifica resumo do ciclo do bot"""
+        cycle_num = data.get('cycle', 0)
+        signals_found = data.get('signals_found', 0)
+        trades_executed = data.get('trades_executed', 0)
+        positions_open = data.get('positions_open', 0)
+        total_pnl = data.get('total_pnl', 0)
+        market_regime = data.get('market_regime', 'UNKNOWN')
+
+        pnl_emoji = "🟢" if total_pnl > 0 else "🔴" if total_pnl < 0 else "⚪"
+
+        message = f"""
+🔄 <b>CYCLE #{cycle_num} COMPLETE</b>
+
+🔍 <b>Signals:</b> {signals_found}
+📈 <b>Executed:</b> {trades_executed}
+📊 <b>Positions:</b> {positions_open}
+{pnl_emoji} <b>P&L:</b> {total_pnl:+.2f} USDT
+🌍 <b>Regime:</b> {market_regime}
+"""
+        await self.send_message(message)
+
 # Instância global
 telegram_notifier = TelegramNotifier()

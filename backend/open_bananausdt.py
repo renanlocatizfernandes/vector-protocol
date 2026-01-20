@@ -135,7 +135,7 @@ async def main():
     print("="*70)
 
     if result and result['success']:
-        print(f"\n✅ BANANAUSDT Position Opened")
+        print("\n✅ BANANAUSDT Position Opened")
         print(f"   Order ID: {result['order_id']}")
         print(f"   Entry: ${result['entry_price']:.6f}")
 
@@ -149,11 +149,11 @@ async def main():
         print("  📊 Order Book Depth Validation")
         print("  🎯 Stop Loss & Take Profit Orders (Binance)")
         print("  📈 Position Monitoring in Real-time")
-        print(f"\n⏳ Monitor all 3 positions until they reach +2% or close on TP")
+        print("\n⏳ Monitor all 3 positions until they reach +2% or close on TP")
         print(f"{'='*70}\n")
         return True
     else:
-        print(f"\n❌ BANANAUSDT Position Failed")
+        print("\n❌ BANANAUSDT Position Failed")
         if result:
             print(f"   Reason: {result['reason']}")
         print(f"{'='*70}\n")
