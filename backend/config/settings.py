@@ -263,7 +263,7 @@ class Settings(BaseSettings):
     POSITIONS_AUTO_SYNC_STRICT: bool = False
 
     # Rate Limiting (evitar ban da Binance)
-    POSITION_MONITOR_INTERVAL_SEC: int = 15  # Intervalo de monitoramento (era 6s)
+    POSITION_MONITOR_INTERVAL_SEC: int = 20  # Intervalo de monitoramento (era 6s, depois 15s)
     API_MAX_REQUESTS_PER_MINUTE: int = 800  # Limite seguro (Binance permite 1200)
     PRICE_CACHE_TTL_SEC: int = 5  # Cache de preços (era 2s)
 
@@ -273,11 +273,11 @@ class Settings(BaseSettings):
     
     # Cache Settings (Redis)
     CACHE_ENABLED: bool = True  # Habilitar cache para reduzir chamadas à API
-    CACHE_ACCOUNT_TTL: int = 10  # Saldo: 10s
-    CACHE_POSITIONS_TTL: int = 5  # Posições: 5s
-    CACHE_SYMBOL_INFO_TTL: int = 3600  # Info de símbolos: 1h
-    CACHE_MARKET_DATA_TTL: int = 2  # Preços: 2s
-    CACHE_KLINES_TTL: int = 30  # Klines: 30s
+    CACHE_ACCOUNT_TTL: int = 30  # Saldo: 30s (era 10s) - reduz 66% das chamadas
+    CACHE_POSITIONS_TTL: int = 15  # Posições: 15s (era 5s) - reduz 66% das chamadas
+    CACHE_SYMBOL_INFO_TTL: int = 3600  # Info de símbolos: 1h (já otimizado)
+    CACHE_MARKET_DATA_TTL: int = 5  # Preços: 5s (era 2s) - reduz 60% das chamadas
+    CACHE_KLINES_TTL: int = 60  # Klines: 60s (era 30s) - reduz 50% das chamadas
     
     # ✅ PASSO 3: CONNECTION POOLING PARA BINANCE API
     # Configurações de otimização de conexões HTTP

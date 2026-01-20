@@ -327,6 +327,10 @@ class BinanceClientManager:
         self._banned_until: float = 0  # Timestamp até quando está banido
         logger.info(f"🔒 Rate limiter: {self._max_requests_per_minute} req/min, price cache TTL: {self._price_cache_ttl}s")
 
+        # ✅ Request Deduplication - evita múltiplas chamadas simultâneas para os mesmos dados
+        self._in_flight_requests: Dict[str, asyncio.Future] = {}
+        self._in_flight_lock = asyncio.Lock()
+
         # Estado do User Data Stream
         self._twm: Optional[ThreadedWebsocketManager] = None
         self._listen_key: Optional[str] = None
@@ -409,12 +413,14 @@ class BinanceClientManager:
         **kwargs
     ) -> Any:
         """
-        Generic caching wrapper for API calls.
-        Checks Redis cache first, falls back to API call if miss.
+        Generic caching wrapper for API calls with REQUEST DEDUPLICATION.
+        1. Checks Redis cache first
+        2. If miss, checks if request already in-flight (dedup)
+        3. Falls back to API call if both miss
         """
         if not self.cache_enabled or not self.redis:
             return await fetch_fn(*args, **kwargs)
-        
+
         try:
             # Try cache first
             cached = await self.redis.get(cache_key)
@@ -423,24 +429,51 @@ class BinanceClientManager:
                 return json.loads(cached)
         except Exception as e:
             logger.warning(f"Cache read error for {cache_key}: {e}")
-        
+
+        # ✅ REQUEST DEDUPLICATION: Se já existe uma requisição em andamento para este cache_key, aguardar
+        async with self._in_flight_lock:
+            if cache_key in self._in_flight_requests:
+                logger.debug(f"⏳ Dedup: aguardando requisição em andamento para {cache_key}")
+                try:
+                    return await self._in_flight_requests[cache_key]
+                except Exception:
+                    pass  # Se a requisição original falhou, tentamos novamente
+
+            # Criar future para esta requisição
+            loop = asyncio.get_event_loop()
+            future = loop.create_future()
+            self._in_flight_requests[cache_key] = future
+
         # Cache miss - fetch from API
         logger.debug(f"❌ Cache MISS: {cache_key}")
-        result = await fetch_fn(*args, **kwargs)
-        
-        # Store in cache
-        if result is not None:
-            try:
-                await self.redis.setex(
-                    cache_key,
-                    ttl,
-                    json.dumps(result, default=str)
-                )
-                logger.debug(f"💾 Cached: {cache_key} (TTL={ttl}s)")
-            except Exception as e:
-                logger.warning(f"Cache write error for {cache_key}: {e}")
-        
-        return result
+        try:
+            result = await fetch_fn(*args, **kwargs)
+
+            # Store in cache
+            if result is not None:
+                try:
+                    await self.redis.setex(
+                        cache_key,
+                        ttl,
+                        json.dumps(result, default=str)
+                    )
+                    logger.debug(f"💾 Cached: {cache_key} (TTL={ttl}s)")
+                except Exception as e:
+                    logger.warning(f"Cache write error for {cache_key}: {e}")
+
+            # Resolver future para outras coroutines aguardando
+            if not future.done():
+                future.set_result(result)
+            return result
+        except Exception as e:
+            # Propagar erro para coroutines aguardando
+            if not future.done():
+                future.set_exception(e)
+            raise
+        finally:
+            # Remover da lista de in-flight
+            async with self._in_flight_lock:
+                self._in_flight_requests.pop(cache_key, None)
     
     async def invalidate_cache(self, pattern: str):
         """
@@ -697,23 +730,39 @@ class BinanceClientManager:
             return []
     
     async def get_klines(self, symbol: str, interval: str = '1h', limit: int = 100):
-        """Retorna dados de candlestick com retries"""
-        try:
-            klines = await self._retry_call(
-                self.client.futures_klines,
-                symbol=symbol,
-                interval=interval,
-                limit=limit
-            )
+        """Retorna dados de candlestick com retries e CACHE INTELIGENTE"""
+        # ✅ Cache TTL baseado no intervalo (intervalos maiores = cache mais longo)
+        interval_ttl_map = {
+            '1m': 15,   # 15s para 1 minuto
+            '3m': 30,   # 30s para 3 minutos
+            '5m': 45,   # 45s para 5 minutos
+            '15m': 90,  # 90s para 15 minutos
+            '30m': 120, # 2min para 30 minutos
+            '1h': 180,  # 3min para 1 hora
+            '4h': 300,  # 5min para 4 horas
+            '1d': 600,  # 10min para diário
+        }
+        ttl = interval_ttl_map.get(interval, 60)  # Default 60s
+        cache_key = f"binance:klines:{symbol}:{interval}:{limit}"
 
-            logger.info(f"Klines de {symbol} obtidos: {len(klines)} candles")
-            return klines
-        except BinanceAPIException as e:
-            logger.error(f"Erro ao obter klines de {symbol} (após retries): {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Erro inesperado ao obter klines de {symbol}: {e}")
-            return []
+        async def _fetch():
+            try:
+                klines = await self._retry_call(
+                    self.client.futures_klines,
+                    symbol=symbol,
+                    interval=interval,
+                    limit=limit
+                )
+                logger.info(f"Klines de {symbol} obtidos: {len(klines)} candles")
+                return klines
+            except BinanceAPIException as e:
+                logger.error(f"Erro ao obter klines de {symbol} (após retries): {e}")
+                return []
+            except Exception as e:
+                logger.error(f"Erro inesperado ao obter klines de {symbol}: {e}")
+                return []
+
+        return await self._cached_call(cache_key, ttl=ttl, fetch_fn=_fetch)
     
     async def get_symbol_info(self, symbol: str) -> Optional[Dict]:
         """Retorna informações de precisão e filtros do símbolo com retries e cache (1h TTL)"""
