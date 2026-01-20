@@ -257,14 +257,17 @@ class OrderExecutor:
             # 1. VALIDAÇÕES INICIAIS
             # ================================
             
-            # ✅ NOVO: Validar spread bid/ask ANTES de tudo
+            # ✅ NOVO: Validar spread bid/ask ANTES de tudo (bypass se force=True)
+            is_forced = signal.get('force', False)
             spread_valid, spread_msg = await self._validate_spread(symbol)
-            if not spread_valid:
+            if not spread_valid and not is_forced:
                 logger.warning(f"❌ {symbol}: {spread_msg}")
                 return {'success': False, 'reason': spread_msg}
+            elif not spread_valid and is_forced:
+                logger.warning(f"⚠️ {symbol}: {spread_msg} - IGNORADO (force=True)")
 
-            # ✅ PROFIT OPTIMIZATION: Order Book Depth Filtering
-            if getattr(self.settings, "ENABLE_ORDER_BOOK_FILTER", True):
+            # ✅ PROFIT OPTIMIZATION: Order Book Depth Filtering (bypass se force=True)
+            if getattr(self.settings, "ENABLE_ORDER_BOOK_FILTER", True) and not is_forced:
                 depth_ok = await self._validate_order_book_depth(symbol, signal)
                 if not depth_ok:
                     reason = signal.get("order_book_block_reason", "Order book validation failed")
