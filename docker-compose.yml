@@ -56,6 +56,8 @@ services:
     command: uvicorn api.app:app --host 0.0.0.0 --port 8000
     networks:
       - trading-network
+    mem_limit: 1g
+    mem_reservation: 512m
 
   frontend:
     build:

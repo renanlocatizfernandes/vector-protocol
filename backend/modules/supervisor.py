@@ -49,8 +49,8 @@ class Supervisor:
         
         # Thresholds de recursos
         self.resource_thresholds = {
-            'memory_warning_mb': 512,      # 512MB
-            'memory_critical_mb': 1024,    # 1GB
+            'memory_warning_mb': 1024,     # 1GB
+            'memory_critical_mb': 2048,    # 2GB
             'cpu_warning_pct': 70,          # 70%
             'cpu_critical_pct': 90,         # 90%
             'disk_warning_pct': 80,         # 80%
