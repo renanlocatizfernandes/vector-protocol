@@ -588,24 +588,10 @@ class SignalGenerator:
             logger.debug(f"{symbol}: derivativos indisponíveis para ajuste ({_e})")
         
         # ================================
-        # CALCULAR STOP LOSS E TAKE PROFIT
+        # DETECTAR REGIME DE MERCADO (ANTES DO SL)
         # ================================
-        
-        # ✅ NOVO v5.0: Stop Loss via Chandelier Exit (método dedicado)
-        # Passamos um DF mínimo com ATR para o método
-        df_sl = pd.DataFrame({'atr': [atr]})
-        stop_loss = self._calculate_stop_loss(df_sl, direction, current_price)
 
-        if direction == 'LONG':
-            take_profit_1 = current_price + (atr * self.tp_multiplier)
-            take_profit_2 = current_price + (atr * self.tp_multiplier * 1.5)
-            take_profit_3 = current_price + (atr * self.tp_multiplier * 2.0)
-        else:  # SHORT
-            take_profit_1 = current_price - (atr * self.tp_multiplier)
-            take_profit_2 = current_price - (atr * self.tp_multiplier * 1.5)
-            take_profit_3 = current_price - (atr * self.tp_multiplier * 2.0)
-        
-        # ✅ NOVO (P3): Regime de mercado e R:R dinâmico
+        # ✅ ANTI-REENTRY: Regime de mercado para ajustar SL
         # Regime simples: usa ATR% e inclinação da EMA200 (últimos ~5 candles 1h)
         atr_pct_full = (atr / current_price * 100) if current_price else 0.0
         try:
@@ -619,6 +605,24 @@ class SignalGenerator:
             ema200_slope_pct = 0.0
 
         trending = (abs(ema200_slope_pct) > 0.2 and 0.3 <= atr_pct_full <= 3.0)
+
+        # ================================
+        # CALCULAR STOP LOSS E TAKE PROFIT
+        # ================================
+
+        # ✅ NOVO v5.0: Stop Loss via Chandelier Exit (método dedicado)
+        # ✅ ANTI-REENTRY: Passa regime para ajustar SL em consolidação
+        df_sl = pd.DataFrame({'atr': [atr]})
+        stop_loss = self._calculate_stop_loss(df_sl, direction, current_price, is_trending=trending)
+
+        if direction == 'LONG':
+            take_profit_1 = current_price + (atr * self.tp_multiplier)
+            take_profit_2 = current_price + (atr * self.tp_multiplier * 1.5)
+            take_profit_3 = current_price + (atr * self.tp_multiplier * 2.0)
+        else:  # SHORT
+            take_profit_1 = current_price - (atr * self.tp_multiplier)
+            take_profit_2 = current_price - (atr * self.tp_multiplier * 1.5)
+            take_profit_3 = current_price - (atr * self.tp_multiplier * 2.0)
         rr_min_trend = float(getattr(self.settings, "RR_MIN_TREND", 1.2))
         rr_min_range = float(getattr(self.settings, "RR_MIN_RANGE", 1.6))
         rr_min = rr_min_trend if trending else rr_min_range
@@ -1208,10 +1212,11 @@ class SignalGenerator:
         return None
 
 
-    def _calculate_stop_loss(self, df: pd.DataFrame, direction: str, entry_price: float) -> float:
+    def _calculate_stop_loss(self, df: pd.DataFrame, direction: str, entry_price: float, is_trending: bool = True) -> float:
         """
         Calcula Stop Loss dinâmico baseado em ATR (Chandelier Exit)
         ✅ v6.0: Phase 2 - ATR Dinâmico com limites configuráveis
+        ✅ ANTI-REENTRY: Ajusta SL baseado em regime de mercado (trending vs ranging/consolidação)
         """
         try:
             last_row = df.iloc[-1]
@@ -1230,6 +1235,13 @@ class SignalGenerator:
                 atr_multiplier = float(getattr(self.settings, "ATR_STOP_LOSS_MULTIPLIER", 3.0))
                 min_distance_pct = 1.0
                 max_distance_pct = 10.0
+
+            # ✅ ANTI-REENTRY: Em mercado de consolidação/ranging, aumentar SL para evitar stops prematuros
+            if not is_trending:
+                consolidation_sl_mult = float(getattr(self.settings, "SL_CONSOLIDATION_MULTIPLIER", 1.5))
+                atr_multiplier *= consolidation_sl_mult
+                max_distance_pct *= 1.25  # Permitir SL 25% mais largo em consolidação
+                logger.info(f"📊 Mercado em CONSOLIDAÇÃO: SL multiplicador ajustado para {atr_multiplier:.2f}x ATR")
 
             if direction == 'LONG':
                 # Chandelier Exit Long: Entry - ATR * Multiplier

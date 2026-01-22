@@ -81,7 +81,11 @@ class AutonomousBot:
         # ✅ MELHORIA #9: Anti-Correlation Tracking
         self._sector_positions = {}  # {sector: [symbols]}
 
-        logger.info("✅ Phase 2 improvements initialized: Circuit Breaker, Score Priority, Anti-Correlation")
+        # ✅ ANTI-REENTRY PROTECTION: Cooldown e limite de trades por par
+        self._symbol_cooldowns = {}  # {symbol: cooldown_until_timestamp}
+        self._symbol_trade_history = {}  # {symbol: [trade_timestamps]}
+
+        logger.info("✅ Phase 2 improvements initialized: Circuit Breaker, Score Priority, Anti-Correlation, Anti-Reentry")
 
     def _get_symbol_sector(self, symbol: str) -> str:
         """
@@ -154,6 +158,114 @@ class AutonomousBot:
             logger.debug(f"Sector positions updated: {self._sector_positions}")
         except Exception as e:
             logger.error(f"Error updating sector positions: {e}")
+
+    def _check_symbol_cooldown(self, symbol: str) -> bool:
+        """
+        ✅ ANTI-REENTRY: Verifica se o símbolo está em cooldown após stop loss
+
+        Returns: True se pode operar, False se em cooldown
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'SYMBOL_COOLDOWN_ENABLED', True):
+            return True
+
+        now = time.time()
+        cooldown_until = self._symbol_cooldowns.get(symbol, 0)
+
+        if now < cooldown_until:
+            remaining_min = (cooldown_until - now) / 60
+            logger.warning(f"⏳ COOLDOWN: {symbol} em cooldown por mais {remaining_min:.0f} min após stop loss")
+            return False
+
+        return True
+
+    def _set_symbol_cooldown(self, symbol: str, reason: str = "stop_loss"):
+        """
+        ✅ ANTI-REENTRY: Define cooldown para um símbolo após stop loss
+        """
+        settings = get_settings()
+
+        if not getattr(settings, 'SYMBOL_COOLDOWN_ENABLED', True):
+            return
+
+        cooldown_minutes = int(getattr(settings, 'SYMBOL_COOLDOWN_AFTER_STOP_MINUTES', 60))
+        cooldown_until = time.time() + (cooldown_minutes * 60)
+        self._symbol_cooldowns[symbol] = cooldown_until
+
+        logger.info(f"🛑 COOLDOWN: {symbol} em cooldown por {cooldown_minutes} min ({reason})")
+
+        # Persistir no Redis para sobreviver a restarts
+        try:
+            if redis_client and redis_client.client:
+                redis_client.client.setex(
+                    f"cooldown:{symbol}",
+                    cooldown_minutes * 60,
+                    reason
+                )
+        except Exception as e:
+            logger.debug(f"Failed to persist cooldown in Redis: {e}")
+
+    def _check_symbol_trade_limit(self, symbol: str) -> bool:
+        """
+        ✅ ANTI-REENTRY: Verifica se o símbolo excedeu limite de trades na janela
+
+        Returns: True se pode operar, False se limite atingido
+        """
+        settings = get_settings()
+
+        max_trades = int(getattr(settings, 'MAX_TRADES_PER_SYMBOL_WINDOW', 2))
+        window_hours = int(getattr(settings, 'TRADES_PER_SYMBOL_WINDOW_HOURS', 2))
+
+        now = time.time()
+        window_start = now - (window_hours * 3600)
+
+        # Limpar trades antigos
+        if symbol in self._symbol_trade_history:
+            self._symbol_trade_history[symbol] = [
+                ts for ts in self._symbol_trade_history[symbol]
+                if ts > window_start
+            ]
+        else:
+            self._symbol_trade_history[symbol] = []
+
+        current_count = len(self._symbol_trade_history[symbol])
+
+        if current_count >= max_trades:
+            logger.warning(
+                f"🚫 TRADE LIMIT: {symbol} já tem {current_count}/{max_trades} trades nas últimas {window_hours}h"
+            )
+            return False
+
+        return True
+
+    def _record_symbol_trade(self, symbol: str):
+        """
+        ✅ ANTI-REENTRY: Registra trade para controle de limite por par
+        """
+        now = time.time()
+
+        if symbol not in self._symbol_trade_history:
+            self._symbol_trade_history[symbol] = []
+
+        self._symbol_trade_history[symbol].append(now)
+        logger.debug(f"Trade recorded for {symbol}. Total in window: {len(self._symbol_trade_history[symbol])}")
+
+    def _can_trade_symbol(self, symbol: str) -> tuple[bool, str]:
+        """
+        ✅ ANTI-REENTRY: Verificação consolidada de cooldown e limite de trades
+
+        Returns: (can_trade: bool, reason: str)
+        """
+        # Check cooldown
+        if not self._check_symbol_cooldown(symbol):
+            return (False, "symbol_cooldown")
+
+        # Check trade limit
+        if not self._check_symbol_trade_limit(symbol):
+            return (False, "trade_limit_exceeded")
+
+        return (True, "ok")
 
     def _check_circuit_breaker(self, db) -> bool:
         """
@@ -234,12 +346,17 @@ class AutonomousBot:
     def _on_trade_closed(self, trade, is_win: bool):
         """
         ✅ MELHORIA #14: Tracking de losses consecutivos para circuit breaker
+        ✅ ANTI-REENTRY: Set cooldown on stop loss
         """
         if is_win:
             self._consecutive_losses = 0
         else:
             self._consecutive_losses += 1
             logger.warning(f"⚠️ Consecutive losses: {self._consecutive_losses}")
+
+            # ✅ ANTI-REENTRY: Set cooldown for this symbol after stop loss
+            if trade and hasattr(trade, 'symbol'):
+                self._set_symbol_cooldown(trade.symbol, reason="stop_loss")
 
     def _can_replace_position(self, new_score: int, db) -> tuple[bool, str]:
         """
@@ -914,6 +1031,12 @@ class AutonomousBot:
                 break
 
             try:
+                # ✅ ANTI-REENTRY: Check cooldown and trade limit
+                can_trade, reason = self._can_trade_symbol(sym)
+                if not can_trade:
+                    logger.info(f"Sniper pulado {sym}: {reason}")
+                    continue
+
                 price = await binance_client.get_symbol_price(sym)
                 if not price:
                     logger.warning(f"Preco nao disponivel para {sym}, pulando.")
@@ -966,6 +1089,7 @@ class AutonomousBot:
                 )
                 if bool(exec_res.get("success")):
                     opened += 1
+                    self._record_symbol_trade(sym)  # ✅ ANTI-REENTRY: Record trade for limit tracking
                     logger.info(f"Sniper aberto: {sym} {direction} @ {exec_res.get('entry_price') or exec_res.get('avg_price')}")
                 else:
                     logger.warning(f"Sniper rejeitado {sym}: {exec_res.get('reason')}")
@@ -1172,14 +1296,24 @@ class AutonomousBot:
             approved_signals = [s for s in signals if await market_filter.should_trade_symbol(s, market_sentiment)]
             filtered_signals = await correlation_filter.filter_correlated_signals(approved_signals, open_positions_exch, max_correlation=0.7)
 
+            # ✅ ANTI-REENTRY: Filter out symbols in cooldown or exceeding trade limit
+            tradeable_signals = []
+            for sig in filtered_signals:
+                can_trade, reason = self._can_trade_symbol(sig['symbol'])
+                if can_trade:
+                    tradeable_signals.append(sig)
+                else:
+                    logger.info(f"⏳ Signal filtrado {sig['symbol']}: {reason}")
+
             # Track execution latency
             exec_start = time.time()
-            final_signals = filtered_signals[:available_slots]
+            final_signals = tradeable_signals[:available_slots]
             opened = 0
             for sig in final_signals:
                 exec_res = await order_executor.execute_signal(signal=sig, account_balance=account_balance, open_positions=len(open_positions_exch) + opened, dry_run=self.dry_run)
                 if exec_res.get("success"):
                     opened += 1
+                    self._record_symbol_trade(sig['symbol'])  # ✅ ANTI-REENTRY: Record trade
                     logger.info(f"✅ Executado {sig['symbol']} {sig['direction']}")
                 else:
                     logger.warning(f"❌ Rejeitado {sig['symbol']}: {exec_res.get('reason')}")

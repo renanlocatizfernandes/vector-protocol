@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     
     # Market Scanner (cobertura de universo)
     SCANNER_TOP_N: int = 800                     # Top-N por volume (quoteVolume) para priorização
-    SCANNER_MAX_SYMBOLS: int = 80                # Limite de simbolos processados por ciclo (performance)
+    SCANNER_MAX_SYMBOLS: int = 50                # Limite de simbolos processados por ciclo (performance) - reduzido de 80 para melhorar latência
     SCANNER_STRICT_WHITELIST: bool = False       # Se True, restringe ao whitelist em qualquer ambiente
     SCANNER_TESTNET_STRICT_WHITELIST: bool = False # Se True, restringe ao whitelist no TESTNET
     SCANNER_MIN_VOLUME_24H: float = 20_000_000.0   # Liquidez minima 24h para scanner
@@ -200,6 +200,14 @@ class Settings(BaseSettings):
     CIRCUIT_BREAKER_COOLDOWN_HOURS: int = 2  # Aguardar 2h antes de retomar
     CIRCUIT_BREAKER_RESET_UTC_HOUR: int = 0  # Reset automático às 00:00 UTC
 
+    # ========================================
+    # ANTI-REENTRY PROTECTION (Evitar reentradas consecutivas)
+    # ========================================
+    SYMBOL_COOLDOWN_ENABLED: bool = True
+    SYMBOL_COOLDOWN_AFTER_STOP_MINUTES: int = 60  # Cooldown de 60 min após stop loss
+    MAX_TRADES_PER_SYMBOL_WINDOW: int = 2  # Máximo 2 trades por par na janela
+    TRADES_PER_SYMBOL_WINDOW_HOURS: int = 2  # Janela de 2 horas para contagem
+
     # Whitelist Dinâmica (Melhoria #7)
     DYNAMIC_WHITELIST_ENABLED: bool = True
     DYNAMIC_WHITELIST_MIN_VOLUME_24H: float = 500_000_000  # $500M volume mínimo
@@ -231,6 +239,7 @@ class Settings(BaseSettings):
     SL_ATR_PERIOD: int = 14  # Período ATR
     SL_ATR_MIN_DISTANCE_PCT: float = 1.0  # Mínimo 1% de distância
     SL_ATR_MAX_DISTANCE_PCT: float = 8.0  # Máximo 8% de distância
+    SL_CONSOLIDATION_MULTIPLIER: float = 1.5  # ✅ ANTI-REENTRY: Multiplicador extra para SL em consolidação
 
     # Margem Híbrida (Melhoria #15)
     HYBRID_MARGIN_ENABLED: bool = True
@@ -326,7 +335,7 @@ class Settings(BaseSettings):
 
     # Order Book Depth
     ENABLE_ORDER_BOOK_FILTER: bool = True
-    MIN_LIQUIDITY_DEPTH_USDT: float = 100000.0  # $100k within 5%
+    MIN_LIQUIDITY_DEPTH_USDT: float = 50000.0  # $50k within 5% (reduzido de $100k para permitir mais altcoins)
     ORDER_BOOK_DEPTH_LEVELS: int = 100
     ORDER_BOOK_BLOCK_INVALID: bool = True
     ORDER_BOOK_BLOCK_LOW_LIQUIDITY: bool = True

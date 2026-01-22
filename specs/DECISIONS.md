@@ -56,4 +56,18 @@ Ao tomar uma decisão significativa (arquitetura, biblioteca, trade-off), regist
 
 ---
 
+### DEC-003 Não Fechar Posições Negativas Automaticamente
+
+**Data**: 2026-01-20
+**Status**: `ACCEPTED`
+**Contexto**: Usuário prefere manter controle manual sobre fechamento de posições em prejuízo.
+**Decisão**: Claude NÃO deve fechar posições negativas a menos que o usuário peça EXPLICITAMENTE.
+**Consequências**:
+- (+) Usuário mantém controle total sobre gestão de risco
+- (+) Evita fechamento prematuro antes de recuperação
+- (-) Requer monitoramento manual em casos extremos
+**Regra**: Aguardar reversão do mercado ou ordem explícita do usuário.
+
+---
+
 <!-- Adicione novas decisões abaixo -->
